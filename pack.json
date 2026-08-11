@@ -1,0 +1,24 @@
+{
+  "name": "rigNodeComponent",
+  "url": "https://github.com/rigkid/rigNodeComponent.git",
+  "ref": "main",
+  "version": "0.1.0",
+  "author": "Rigkid",
+  "license": "MIT Rigkid Contributors",
+  "description": "CNodeGraph PODs + catalog/eval helpers + SGraphEval Update system.",
+  "dependencies": [
+    {
+      "name": "rigComponent",
+      "url": "https://github.com/rigkid/rigComponent.git",
+      "ref": "main"
+    },
+    {
+      "name": "rigProject",
+      "url": "https://github.com/rigkid/rigProject.git",
+      "ref": "main"
+    }
+  ],
+  "include_paths": [
+    "src"
+  ]
+}

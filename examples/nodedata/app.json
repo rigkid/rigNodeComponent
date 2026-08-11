@@ -1,0 +1,13 @@
+{
+  "name": "nodedata",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Example rigNodeComponent",
+  "window": { "width": 680, "height": 440, "title": "rigNodeComponent - nodedata" },
+  "dependencies": [
+    { "name": "rigComponent", "url": "https://github.com/rigkid/rigComponent.git", "ref": "main" },
+    { "name": "rigSystems", "url": "https://github.com/rigkid/rigSystems.git", "ref": "main" },
+    { "name": "rigNodeComponent", "url": "https://github.com/rigkid/rigNodeComponent.git", "ref": "main" },
+    { "name": "rigImGui", "url": "https://github.com/rigkid/rigImGui.git", "ref": "main" }
+  ]
+}
