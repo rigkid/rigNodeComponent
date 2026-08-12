@@ -5,7 +5,7 @@
 Generic **node graph** PODs — `CNodeGraph` + catalog + eval + **`SGraphEval`**
 (Update: evaluate every graph and `applyRefWrites`).
 
-**Artist guide (editor, catalog, recipes):** [docs/nodes.md](../../docs/nodes.md) in the RigKit host.
+**Artist guide (editor, catalog, recipes):** [docs/nodes.md](https://github.com/rigkid/RigKit/blob/main/docs/nodes.md) in the RigKit host.
 
 | Category | Nodes |
 |----------|--------|

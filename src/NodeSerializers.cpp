@@ -3,7 +3,7 @@
 #include "CNodeGraph.h"
 #include "ComponentSerializerRegistry.h"
 #include "NodeGraph.h"
-#include "core/GlmJson.h"
+#include "core/TypeJson.h"
 
 #include <functional>
 #include <memory>
