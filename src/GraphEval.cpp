@@ -81,6 +81,15 @@ glm::vec4 linkedIn(const rigkit::ecs::NodeGraphData& graph, const EvalResult& ev
 	return fallback;
 }
 
+bool pinHasIncoming(const rigkit::ecs::NodeGraphData& graph, uint32_t nodeId, uint32_t pinId) {
+	for (const auto& l : graph.links) {
+		if (l.toNode == nodeId && l.toPin == pinId) {
+			return true;
+		}
+	}
+	return false;
+}
+
 glm::vec4 inPin(const rigkit::ecs::NodeGraphData& graph, const EvalResult& ev,
 				const rigkit::ecs::GraphNode& node, std::string_view name, std::string_view toType,
 				const glm::vec4& fallback) {
@@ -526,7 +535,8 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			if (in) {
 				result.pinValue[pinKey(id, in->id)] = glm::vec4(v);
 			}
-			if (ctx.collectOutputs) {
+			// Orphaned refs must not write (delete LFO must stop driving).
+			if (ctx.collectOutputs && in && pinHasIncoming(graph, id, in->id)) {
 				RefWrite w;
 				w.entity = getParamString(node, "entity");
 				w.prop = getParamString(node, "prop");
@@ -541,7 +551,7 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			if (in) {
 				result.pinValue[pinKey(id, in->id)] = v;
 			}
-			if (ctx.collectOutputs) {
+			if (ctx.collectOutputs && in && pinHasIncoming(graph, id, in->id)) {
 				RefWrite w;
 				w.entity = getParamString(node, "entity");
 				w.prop = getParamString(node, "prop");
@@ -558,7 +568,7 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			if (in) {
 				result.pinValue[pinKey(id, in->id)] = v;
 			}
-			if (ctx.collectOutputs) {
+			if (ctx.collectOutputs && in && pinHasIncoming(graph, id, in->id)) {
 				RefWrite w;
 				w.entity = getParamString(node, "entity");
 				w.prop = getParamString(node, "prop");
