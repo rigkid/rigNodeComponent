@@ -120,7 +120,7 @@ int main() {
 	std::printf("node_smoke ok catalog=%zu float/vec2/color outs\n",
 				rig::node::builtinCatalog().size());
 
-	// Nestable group: Value(2) + Value(5) → Add inside group → Float Out
+	// Nestable group: Value(2) + Value(5) to Add inside group to Float Out
 	graph = {};
 	const uint32_t ga = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 0.f});
 	const uint32_t gb = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 80.f});
@@ -164,7 +164,7 @@ int main() {
 		return 1;
 	}
 
-	// Nested inject: parent drives published in → nested math → published out.
+	// Nested inject: parent drives published in to nested math to published out.
 	// (createGroup smoke keeps Value nodes inside; this is the easy miss.)
 	graph = {};
 	const uint32_t gid2 = rig::node::createEmptyGroup(graph, {200.f, 40.f}, "Inject");
@@ -201,7 +201,7 @@ int main() {
 	rig::node::setParamFloat(*nParentVal, "value", 4.f);
 	if (!rig::node::tryLinkByName(graph, parentVal, "out", gid2, "a") ||
 		!rig::node::tryLinkByName(graph, gid2, "out", parentOut, "in")) {
-		std::printf("node_smoke FAIL parent↔group link\n");
+		std::printf("node_smoke FAIL parent <-> group link\n");
 		return 1;
 	}
 	ev = rig::node::evaluateGraph(graph);

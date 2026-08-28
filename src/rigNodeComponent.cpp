@@ -1,14 +1,15 @@
 #include "rigNodeComponent.h"
 
-#include "CNodeGraph.h"
-#include "NodeSerializers.h"
-#include "SGraphEval.h"
-#include "core/RigKitEngine.h"
 #include "core/pack/MPack.h"
 #include "core/pack/PackRegistry.h"
+#include "core/RigKitEngine.h"
 #include "ecs/MEcs.h"
 #include "ecs/SystemRegistry.h"
+#include "CNodeGraph.h"
+#include "NodeSerializers.h"
 #include "rigProject.h"
+#include "SGraphEval.h"
+
 #include <spdlog/spdlog.h>
 
 namespace rigkit {
@@ -40,7 +41,7 @@ void rigNodeComponent::setup() {
 			node::registerProjectSerializers(doc->serializer().registry());
 			spdlog::info("[rigNodeComponent] registered NodeGraph codecs on rigProject");
 		} else {
-			spdlog::warn("[rigNodeComponent] rigProject not loaded — .rig codecs skipped");
+			spdlog::warn("[rigNodeComponent] rigProject not loaded - .rig codecs skipped");
 		}
 	}
 

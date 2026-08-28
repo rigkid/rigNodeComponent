@@ -1,25 +1,25 @@
 #include "app.h"
 
+#include "core/pack/MPack.h"
+#include "core/RigKitEngine.h"
+#include "rendering/U_gladGlfw.h"
+#include "packs/rigComponent/src/rigComponent.h"
+#include "packs/rigImGui/src/IWindow.h"
+#include "packs/rigImGui/src/Mui.h"
+#include "packs/rigImGui/src/MWindow.h"
+#include "packs/rigImGui/src/rigImGui.h"
+#include "packs/rigImGui/src/UiDpi.h"
+#include "packs/rigNodeComponent/src/GraphEval.h"
+#include "packs/rigNodeComponent/src/NodeGraph.h"
+#include "packs/rigNodeComponent/src/rigNodeComponent.h"
+#include "packs/rigSystems/src/rigSystems.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <spdlog/spdlog.h>
 #include <string>
-
-#include "core/RigKitEngine.h"
-#include "core/pack/MPack.h"
-#include "packs/rigComponent/src/rigComponent.h"
-#include "packs/rigImGui/src/IWindow.h"
-#include "packs/rigImGui/src/MWindow.h"
-#include "packs/rigImGui/src/Mui.h"
-#include "packs/rigImGui/src/UiDpi.h"
-#include "packs/rigImGui/src/rigImGui.h"
-#include "packs/rigNodeComponent/src/GraphEval.h"
-#include "packs/rigNodeComponent/src/NodeGraph.h"
-#include "packs/rigNodeComponent/src/rigNodeComponent.h"
-#include "packs/rigSystems/src/rigSystems.h"
-#include "rendering/U_gladGlfw.h"
 
 namespace {
 

@@ -1,11 +1,10 @@
 #pragma once
 
-#include <glm/glm.hpp>
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <memory>
 #include <string>
 #include <vector>
-
 #include "ecs/PropertyReflection.h"
 
 namespace rigkit {
@@ -37,7 +36,7 @@ struct NodeParam {
 };
 
 /**
- * @brief Outer pin → interior pin. Speaks `rig.node.publish`.
+ * @brief Outer pin to interior pin. Speaks `rig.node.publish`.
  */
 struct NodePublish {
 	uint32_t pin = 0;
@@ -106,9 +105,9 @@ struct CNodeGraph : NodeGraphData {
 	int propNodeCount = 0;
 	int propLinkCount = 0;
 	int propNextId = 1;
-	/// Node Editor → Properties: selected node id in the active dive level.
+	/// Node Editor to Properties: selected node id in the active dive level.
 	uint32_t editSelectedNode = 0;
-	/// Group dive path (root → … → current nested graph).
+	/// Group dive path (root to ... to current nested graph).
 	std::vector<uint32_t> editDivePath;
 
 	std::vector<sProp> GetProperties() {

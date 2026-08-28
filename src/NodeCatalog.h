@@ -1,10 +1,9 @@
 #pragma once
 
-#include "NodeGraph.h"
-
 #include <cstddef>
 #include <string_view>
 #include <vector>
+#include "NodeGraph.h"
 
 namespace rig {
 namespace node {
@@ -19,7 +18,7 @@ struct CatalogParam {
 	/// 0 = drag float, 1 = int combo (use min..max as inclusive indices)
 	int ui = 0;
 	const char* const* comboLabels = nullptr; // size = (max-min)+1 when ui==1
-	/// Rig property datatype id (`float`, `enum`, `string`, …)
+	/// Rig property datatype id (`float`, `enum`, `string`, ...)
 	const char* type = "float";
 	/// Default when `type` is `string`.
 	const char* strDef = "";
@@ -35,7 +34,7 @@ struct CatalogEntry {
 
 /**
  * @brief Built-in Pixile-style catalog (maths, modulators, logic).
- * @details Static table — apps can still spawn custom `typeId`s; unknown types
+ * @details Static table - apps can still spawn custom `typeId`s; unknown types
  * are ignored by the float evaluator.
  */
 const std::vector<CatalogEntry>& builtinCatalog();

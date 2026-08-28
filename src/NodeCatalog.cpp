@@ -177,12 +177,12 @@ std::vector<CatalogEntry> makeCatalog() {
 				  {"out", Kind::Out, "vec4"}},
 				 {}});
 
-	// Output (app-readable lists — still useful; prefer Ref for scene bindings)
+	// Output (app-readable lists - still useful; prefer Ref for scene bindings)
 	c.push_back({"float.out", "Float Out", "Output", {{"in", Kind::In, "float"}}, {}});
 	c.push_back({"vec2.out", "Vec2 Out", "Output", {{"in", Kind::In, "vec2"}}, {}});
 	c.push_back({"color.out", "Color Out", "Output", {{"in", Kind::In, "vec4"}}, {}});
 
-	// Ref — tiny sinks that write entity properties by name
+	// Ref - tiny sinks that write entity properties by name
 	auto strParam = [](const char* key, const char* label) -> CatalogParam {
 		CatalogParam p;
 		p.key = key;

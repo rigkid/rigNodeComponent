@@ -1,11 +1,11 @@
 #pragma once
 
-#include "CNodeGraph.h"
-#include "ecs/MEcs.h"
-
-#include <string>
 #include <string_view>
+#include <string>
 #include <vector>
+
+#include "ecs/MEcs.h"
+#include "CNodeGraph.h"
 
 namespace rig {
 namespace node {
@@ -13,7 +13,7 @@ namespace node {
 struct PinDesc {
 	std::string name;
 	rigkit::ecs::NodePinKind kind = rigkit::ecs::NodePinKind::In;
-	/// Rig property datatype id (`float`, `vec2`, `vec4`, …). Empty = wildcard.
+	/// Rig property datatype id (`float`, `vec2`, `vec4`, ...). Empty = wildcard.
 	std::string type = "float";
 };
 
@@ -81,12 +81,12 @@ void setParamString(rigkit::ecs::GraphNode& node, std::string_view key, std::str
 					std::string_view type = "string");
 
 /**
- * @brief Seed Value → Add ← Value → Out demo graph (float catalog).
+ * @brief Seed Value to Add  from  Value to Out demo graph (float catalog).
  * @details Value A = 1, Value B = 2 (evaluates to 3).
  */
 void seedDemoGraph(rigkit::ecs::CNodeGraph& graph);
 
-/** @brief Normalize legacy pin type strings (`color`→`vec4`, `any`→empty). */
+/** @brief Normalize legacy pin type strings (`color` to `vec4`, `any` to empty). */
 std::string normalizePinType(std::string_view type);
 
 } // namespace node

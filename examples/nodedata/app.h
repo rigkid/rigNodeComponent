@@ -1,6 +1,6 @@
 #pragma once
-#include "core/U_core.h"
 #include <entt/entt.hpp>
+#include "core/U_core.h"
 
 class NodeDataHeroApp : public rigkit::IApp {
   public:

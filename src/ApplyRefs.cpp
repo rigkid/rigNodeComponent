@@ -1,5 +1,4 @@
 #include "ApplyRefs.h"
-
 #include "EntityProperty.h"
 
 namespace rig {

@@ -17,7 +17,7 @@ bool typesCompatible(std::string_view aIn, std::string_view bIn) {
 	if (a == b) {
 		return true;
 	}
-	// Host coercion at eval: float ↔ vec2 ↔ vec4 (colour is vec4).
+	// Host coercion at eval: float  <->  vec2  <->  vec4 (colour is vec4).
 	const bool af = a == "float";
 	const bool bf = b == "float";
 	const bool av = a == "vec2";

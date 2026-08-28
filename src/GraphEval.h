@@ -1,12 +1,11 @@
 #pragma once
 
-#include "CNodeGraph.h"
-
-#include <glm/glm.hpp>
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "CNodeGraph.h"
 
 namespace rig {
 namespace node {
@@ -22,7 +21,7 @@ struct EvalContext {
 
 enum class RefWriteKind : uint8_t { Float = 0, Vec2 = 1, Color = 2 };
 
-/// Intent collected by `ref.*` sinks — apply with `applyRefWrites`.
+/// Intent collected by `ref.*` sinks - apply with `applyRefWrites`.
 struct RefWrite {
 	std::string entity;
 	std::string prop;

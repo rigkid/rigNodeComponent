@@ -1,7 +1,7 @@
 #pragma once
 
-#include "GraphEval.h"
 #include "ecs/MEcs.h"
+#include "GraphEval.h"
 
 namespace rig {
 namespace node {

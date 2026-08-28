@@ -2,7 +2,7 @@
 
 ![preview](examples/nodedata/img/preview.png)
 
-Generic **node graph** PODs — `CNodeGraph` + catalog + eval + **`SGraphEval`**
+Generic **node graph** PODs - `CNodeGraph` + catalog + eval + **`SGraphEval`**
 (Update: evaluate every graph and `applyRefWrites`).
 
 **Artist guide (editor, catalog, recipes):** [docs/nodes.md](https://github.com/rigkid/RigKit/blob/main/docs/nodes.md) in the RigKit host.
@@ -17,7 +17,7 @@ Generic **node graph** PODs — `CNodeGraph` + catalog + eval + **`SGraphEval`**
 | Color | Color, Split/Join, Mix, Brightness |
 | Output | Float Out, Vec2 Out, Color Out |
 
-Pin types use Rig property datatypes: `float`, `vec2`, `vec4`, … (colour pins are `vec4`; catalog ids like `color.value` keep domain names). Auto-coerce on links. `.rig` codecs when **rigProject** is loaded.
+Pin types use Rig property datatypes: `float`, `vec2`, `vec4`, ... (colour pins are `vec4`; catalog ids like `color.value` keep domain names). Auto-coerce on links. `.rig` codecs when **rigProject** is loaded.
 
 ```cpp
 rig::node::spawnCatalogNode(graph, "mod.lfo", {40, 80});
