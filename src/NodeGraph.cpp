@@ -87,8 +87,8 @@ uint32_t addNode(rigkit::ecs::NodeGraphData& graph, std::string_view typeId, std
 	return id;
 }
 
-bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin, uint32_t toNode,
-			 uint32_t toPin) {
+bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin,
+			 uint32_t toNode, uint32_t toPin) {
 	if (fromNode == toNode) {
 		return false;
 	}
@@ -155,19 +155,17 @@ void removeNode(rigkit::ecs::NodeGraphData& graph, uint32_t nodeId) {
 										 return l.fromNode == nodeId || l.toNode == nodeId;
 									 }),
 					  graph.links.end());
-	graph.nodes.erase(std::remove_if(graph.nodes.begin(), graph.nodes.end(),
-									 [nodeId](const rigkit::ecs::GraphNode& n) {
-										 return n.id == nodeId;
-									 }),
-					  graph.nodes.end());
+	graph.nodes.erase(
+		std::remove_if(graph.nodes.begin(), graph.nodes.end(),
+					   [nodeId](const rigkit::ecs::GraphNode& n) { return n.id == nodeId; }),
+		graph.nodes.end());
 }
 
 void removeLink(rigkit::ecs::NodeGraphData& graph, uint32_t linkId) {
-	graph.links.erase(std::remove_if(graph.links.begin(), graph.links.end(),
-									 [linkId](const rigkit::ecs::GraphLink& l) {
-										 return l.id == linkId;
-									 }),
-					  graph.links.end());
+	graph.links.erase(
+		std::remove_if(graph.links.begin(), graph.links.end(),
+					   [linkId](const rigkit::ecs::GraphLink& l) { return l.id == linkId; }),
+		graph.links.end());
 }
 
 float getParamFloat(const rigkit::ecs::GraphNode& node, std::string_view key, float fallback) {
@@ -268,10 +266,10 @@ void setParamString(rigkit::ecs::GraphNode& node, std::string_view key, std::str
 void seedDemoGraph(rigkit::ecs::CNodeGraph& graph) {
 	graph = {};
 	using Kind = rigkit::ecs::NodePinKind;
-	const uint32_t a = addNode(graph, "float.value", "Value A", {40.f, 80.f},
-							   {{"out", Kind::Out, "float"}});
-	const uint32_t b = addNode(graph, "float.value", "Value B", {40.f, 220.f},
-							   {{"out", Kind::Out, "float"}});
+	const uint32_t a =
+		addNode(graph, "float.value", "Value A", {40.f, 80.f}, {{"out", Kind::Out, "float"}});
+	const uint32_t b =
+		addNode(graph, "float.value", "Value B", {40.f, 220.f}, {{"out", Kind::Out, "float"}});
 	const uint32_t add =
 		addNode(graph, "float.add", "Add", {280.f, 140.f},
 				{{"a", Kind::In, "float"}, {"b", Kind::In, "float"}, {"out", Kind::Out, "float"}});
@@ -297,7 +295,8 @@ void seedDemoGraph(rigkit::ecs::CNodeGraph& graph) {
 	tryLink(graph, add, nAdd->pins[2].id, out, nOut->pins[0].id);
 }
 
-uint32_t createEmptyGroup(rigkit::ecs::NodeGraphData& graph, glm::vec2 pos, std::string_view title) {
+uint32_t createEmptyGroup(rigkit::ecs::NodeGraphData& graph, glm::vec2 pos,
+						  std::string_view title) {
 	rigkit::ecs::GraphNode node;
 	node.id = graph.allocId();
 	node.typeId = "group";
@@ -308,6 +307,10 @@ uint32_t createEmptyGroup(rigkit::ecs::NodeGraphData& graph, glm::vec2 pos, std:
 	const uint32_t id = node.id;
 	graph.nodes.push_back(std::move(node));
 	return id;
+}
+
+bool isGraphExportType(std::string_view typeId) {
+	return typeId == "graph.input" || typeId == "graph.output";
 }
 
 uint32_t publishInnerPin(rigkit::ecs::GraphNode& group, uint32_t innerNode, uint32_t innerPin,
@@ -324,6 +327,8 @@ uint32_t publishInnerPin(rigkit::ecs::GraphNode& group, uint32_t innerNode, uint
 			return pub.pin; // already published
 		}
 	}
+	const auto* innerNodePtr = group.nested->findNode(innerNode);
+	const bool exportNode = innerNodePtr && isGraphExportType(innerNodePtr->typeId);
 	rigkit::ecs::NodePin outer;
 	// Outer pin ids only need uniqueness within group.pins.
 	uint32_t nextPin = 1;
@@ -331,8 +336,19 @@ uint32_t publishInnerPin(rigkit::ecs::GraphNode& group, uint32_t innerNode, uint
 		nextPin = std::max(nextPin, p.id + 1);
 	}
 	outer.id = nextPin;
-	outer.name = outerName.empty() ? inner->name : std::string(outerName);
-	outer.kind = inner->kind;
+	std::string name(outerName);
+	if (name.empty() && exportNode) {
+		name = getParamString(*innerNodePtr, "name");
+	}
+	outer.name = name.empty() ? inner->name : name;
+	// Export nodes flip: Export In's interior Out pin is fed from an outer In pin
+	// (and Export Out's interior In pin feeds an outer Out pin).
+	if (exportNode) {
+		outer.kind = (inner->kind == rigkit::ecs::NodePinKind::Out) ? rigkit::ecs::NodePinKind::In
+																	: rigkit::ecs::NodePinKind::Out;
+	} else {
+		outer.kind = inner->kind;
+	}
 	outer.type = inner->type;
 	group.pins.push_back(outer);
 	rigkit::ecs::NodePublish pub;
@@ -362,8 +378,8 @@ uint32_t createGroup(rigkit::ecs::NodeGraphData& graph, const std::vector<uint32
 	}
 	centroid /= static_cast<float>(count);
 
-	const uint32_t groupId = createEmptyGroup(graph, pos.x != 0.f || pos.y != 0.f ? pos : centroid,
-											  title);
+	const uint32_t groupId =
+		createEmptyGroup(graph, pos.x != 0.f || pos.y != 0.f ? pos : centroid, title);
 	auto* group = graph.findNode(groupId);
 	if (!group || !group->nested) {
 		return 0;
@@ -436,28 +452,41 @@ uint32_t createGroup(rigkit::ecs::NodeGraphData& graph, const std::vector<uint32
 	group = graph.findNode(groupId);
 	if (group && group->nested) {
 		group->nested->nextId = std::max(group->nested->nextId, maxId);
-		// Publish interior pins that are not fully wired inside the nested graph
-		// (free inputs / free outputs become the group interface).
+		// When the selection contains Export In / Export Out nodes they alone
+		// define the interface (plus crossing links published above).
+		bool hasExport = false;
 		for (const auto& n : group->nested->nodes) {
-			for (const auto& p : n.pins) {
-				bool wired = false;
-				for (const auto& l : group->nested->links) {
-					if (p.kind == rigkit::ecs::NodePinKind::In && l.toNode == n.id &&
-						l.toPin == p.id) {
-						wired = true;
-						break;
+			if (isGraphExportType(n.typeId)) {
+				hasExport = true;
+				break;
+			}
+		}
+		if (!hasExport) {
+			// Publish interior pins that are not fully wired inside the nested graph
+			// (free inputs / free outputs become the group interface).
+			for (const auto& n : group->nested->nodes) {
+				for (const auto& p : n.pins) {
+					bool wired = false;
+					for (const auto& l : group->nested->links) {
+						if (p.kind == rigkit::ecs::NodePinKind::In && l.toNode == n.id &&
+							l.toPin == p.id) {
+							wired = true;
+							break;
+						}
+						if (p.kind == rigkit::ecs::NodePinKind::Out && l.fromNode == n.id &&
+							l.fromPin == p.id) {
+							wired = true;
+							break;
+						}
 					}
-					if (p.kind == rigkit::ecs::NodePinKind::Out && l.fromNode == n.id &&
-						l.fromPin == p.id) {
-						wired = true;
-						break;
+					if (!wired) {
+						publishInnerPin(*group, n.id, p.id, {});
 					}
-				}
-				if (!wired) {
-					publishInnerPin(*group, n.id, p.id, {});
 				}
 			}
 		}
+		// Export nodes publish unconditionally (wired or not).
+		syncGroupInterfaces(graph);
 	}
 	return groupId;
 }
@@ -537,16 +566,107 @@ bool ungroup(rigkit::ecs::NodeGraphData& graph, uint32_t groupId) {
 		remain.push_back(std::move(l));
 	}
 
-	graph.nodes.erase(std::remove_if(graph.nodes.begin(), graph.nodes.end(),
-									 [groupId](const rigkit::ecs::GraphNode& n) {
-										 return n.id == groupId;
-									 }),
-					  graph.nodes.end());
+	graph.nodes.erase(
+		std::remove_if(graph.nodes.begin(), graph.nodes.end(),
+					   [groupId](const rigkit::ecs::GraphNode& n) { return n.id == groupId; }),
+		graph.nodes.end());
 	for (auto& n : nested.nodes) {
 		graph.nodes.push_back(std::move(n));
 	}
 	graph.links = std::move(remain);
 	return true;
+}
+
+namespace {
+
+/// Sync one group node's outer pins with the export nodes inside it.
+void syncGroupInterface(rigkit::ecs::NodeGraphData& graph, rigkit::ecs::GraphNode& group) {
+	if (!group.nested) {
+		return;
+	}
+	using Kind = rigkit::ecs::NodePinKind;
+	for (auto& inner : group.nested->nodes) {
+		const bool isIn = inner.typeId == "graph.input";
+		const bool isOut = inner.typeId == "graph.output";
+		if ((!isIn && !isOut) || inner.pins.empty()) {
+			continue;
+		}
+		auto& ipin = inner.pins.front();
+		std::string name = getParamString(inner, "name");
+		if (name.empty()) {
+			name = isIn ? "in" : "out";
+		}
+		const int ty = getParamInt(inner, "type", 0);
+		const char* tyStr = ty == 1 ? "vec2" : (ty == 2 ? "vec4" : "float");
+		ipin.name = name;
+		ipin.type = tyStr;
+		ipin.kind = isIn ? Kind::Out : Kind::In;
+		rigkit::ecs::NodePublish* pub = nullptr;
+		for (auto& p : group.publishes) {
+			if (p.innerNode == inner.id && p.innerPin == ipin.id) {
+				pub = &p;
+				break;
+			}
+		}
+		if (!pub) {
+			publishInnerPin(group, inner.id, ipin.id, name);
+			for (auto& p : group.publishes) {
+				if (p.innerNode == inner.id && p.innerPin == ipin.id) {
+					pub = &p;
+					break;
+				}
+			}
+		}
+		if (pub) {
+			for (auto& op : group.pins) {
+				if (op.id == pub->pin) {
+					op.name = name;
+					op.type = tyStr;
+					op.kind = isIn ? Kind::In : Kind::Out;
+					break;
+				}
+			}
+		}
+	}
+	// Prune publishes whose interior pin is gone (deleted export/legacy node),
+	// along with the outer pin and any parent links to it.
+	std::vector<uint32_t> deadOuter;
+	group.publishes.erase(std::remove_if(group.publishes.begin(), group.publishes.end(),
+										 [&](const rigkit::ecs::NodePublish& p) {
+											 if (group.nested->findPin(p.innerNode, p.innerPin)) {
+												 return false;
+											 }
+											 deadOuter.push_back(p.pin);
+											 return true;
+										 }),
+						  group.publishes.end());
+	if (!deadOuter.empty()) {
+		auto isDead = [&](uint32_t pin) {
+			return std::find(deadOuter.begin(), deadOuter.end(), pin) != deadOuter.end();
+		};
+		group.pins.erase(
+			std::remove_if(group.pins.begin(), group.pins.end(),
+						   [&](const rigkit::ecs::NodePin& p) { return isDead(p.id); }),
+			group.pins.end());
+		const uint32_t gid = group.id;
+		graph.links.erase(std::remove_if(graph.links.begin(), graph.links.end(),
+										 [&](const rigkit::ecs::GraphLink& l) {
+											 return (l.fromNode == gid && isDead(l.fromPin)) ||
+													(l.toNode == gid && isDead(l.toPin));
+										 }),
+						  graph.links.end());
+	}
+}
+
+} // namespace
+
+void syncGroupInterfaces(rigkit::ecs::NodeGraphData& graph) {
+	for (auto& n : graph.nodes) {
+		if (n.nested) {
+			syncGroupInterfaces(*n.nested);
+			syncGroupInterface(graph, n);
+		}
+	}
 }
 
 } // namespace node

@@ -3,9 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <queue>
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include "AudioBus.h"
 #include "NodeGraph.h"
 
 #ifndef M_PI
@@ -224,6 +225,13 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 				if (!outer || outer->kind != rigkit::ecs::NodePinKind::In) {
 					continue;
 				}
+				// Unconnected outer inputs stay unseeded so interior defaults
+				// (e.g. an Export In node's Default param) apply. Injected values
+				// (this group nested inside another) still count as connected.
+				if (!pinHasIncoming(graph, id, pub.pin) &&
+					result.pinValue.find(pinKey(id, pub.pin)) == result.pinValue.end()) {
+					continue;
+				}
 				nestedSeed[pinKey(pub.innerNode, pub.innerPin)] =
 					linkedIn(graph, result, id, pub.pin, outer->type, {});
 			}
@@ -245,34 +253,63 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			continue;
 		}
 
-		if (t == "float.value") {
+		if (t == "graph.input") {
+			// Group interface: the parent graph seeds this node's Out pin. When
+			// unseeded (top level / unconnected outer pin) the Default param applies.
+			for (const auto& p : node.pins) {
+				if (p.kind == rigkit::ecs::NodePinKind::Out) {
+					const uint64_t key = pinKey(id, p.id);
+					if (result.pinValue.find(key) == result.pinValue.end()) {
+						result.pinValue[key] = glm::vec4(getParamFloat(node, "value", 0.f));
+					}
+					break;
+				}
+			}
+		} else if (t == "graph.output") {
+			// Group interface: capture the In value so the parent can read it back.
+			for (const auto& p : node.pins) {
+				if (p.kind == rigkit::ecs::NodePinKind::In) {
+					result.pinValue[pinKey(id, p.id)] =
+						linkedIn(graph, result, id, p.id, p.type, {});
+					break;
+				}
+			}
+		} else if (t == "float.value") {
 			setOutF(result, node, getParamFloat(node, "value", 0.f));
 		} else if (t == "float.time") {
 			setOutF(result, node, ctx.time);
 		} else if (t == "float.dt") {
 			setOutF(result, node, dt);
 		} else if (t == "float.add") {
-			setOutF(result, node, inF(graph, result, node, "a", 0.f) + inF(graph, result, node, "b", 0.f));
+			setOutF(result, node,
+					inF(graph, result, node, "a", 0.f) + inF(graph, result, node, "b", 0.f));
 		} else if (t == "float.sub") {
-			setOutF(result, node, inF(graph, result, node, "a", 0.f) - inF(graph, result, node, "b", 0.f));
+			setOutF(result, node,
+					inF(graph, result, node, "a", 0.f) - inF(graph, result, node, "b", 0.f));
 		} else if (t == "float.mul") {
-			setOutF(result, node, inF(graph, result, node, "a", 0.f) * inF(graph, result, node, "b", 1.f));
+			setOutF(result, node,
+					inF(graph, result, node, "a", 0.f) * inF(graph, result, node, "b", 1.f));
 		} else if (t == "float.div") {
 			const float b = inF(graph, result, node, "b", 1.f);
-			setOutF(result, node, inF(graph, result, node, "a", 0.f) / (std::fabs(b) < 1e-8f ? 1e-8f : b));
+			setOutF(result, node,
+					inF(graph, result, node, "a", 0.f) / (std::fabs(b) < 1e-8f ? 1e-8f : b));
 		} else if (t == "float.mod") {
 			const float b = inF(graph, result, node, "b", 1.f);
 			setOutF(result, node,
-					(std::fabs(b) < 1e-8f) ? 0.f : std::fmod(inF(graph, result, node, "a", 0.f), b));
+					(std::fabs(b) < 1e-8f) ? 0.f
+										   : std::fmod(inF(graph, result, node, "a", 0.f), b));
 		} else if (t == "float.pow") {
-			setOutF(result, node,
-					std::pow(inF(graph, result, node, "a", 0.f), inF(graph, result, node, "b", 1.f)));
+			setOutF(
+				result, node,
+				std::pow(inF(graph, result, node, "a", 0.f), inF(graph, result, node, "b", 1.f)));
 		} else if (t == "float.min") {
-			setOutF(result, node,
-					std::min(inF(graph, result, node, "a", 0.f), inF(graph, result, node, "b", 0.f)));
+			setOutF(
+				result, node,
+				std::min(inF(graph, result, node, "a", 0.f), inF(graph, result, node, "b", 0.f)));
 		} else if (t == "float.max") {
-			setOutF(result, node,
-					std::max(inF(graph, result, node, "a", 0.f), inF(graph, result, node, "b", 0.f)));
+			setOutF(
+				result, node,
+				std::max(inF(graph, result, node, "a", 0.f), inF(graph, result, node, "b", 0.f)));
 		} else if (t == "float.abs") {
 			setOutF(result, node, std::fabs(inF(graph, result, node, "in", 0.f)));
 		} else if (t == "float.neg") {
@@ -312,14 +349,13 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 		} else if (t == "float.step") {
 			setOutF(result, node,
 					inF(graph, result, node, "b", 0.f) < inF(graph, result, node, "a", 0.5f) ? 0.f
-																							: 1.f);
+																							 : 1.f);
 		} else if (t == "float.smoothstep") {
 			const float e0 = inF(graph, result, node, "a", 0.f);
 			const float e1 = inF(graph, result, node, "b", 1.f);
 			const float x = inF(graph, result, node, "c", 0.5f);
-			const float tn = (std::fabs(e1 - e0) < 1e-8f)
-								 ? 0.f
-								 : std::clamp((x - e0) / (e1 - e0), 0.f, 1.f);
+			const float tn =
+				(std::fabs(e1 - e0) < 1e-8f) ? 0.f : std::clamp((x - e0) / (e1 - e0), 0.f, 1.f);
 			setOutF(result, node, tn * tn * (3.f - 2.f * tn));
 		} else if (t == "mod.lfo") {
 			const float freq = getParamFloat(node, "freq", 1.f);
@@ -391,6 +427,23 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 				}
 			}
 			setOutF(result, node, std::clamp(level, 0.f, 1.f));
+		} else if (t == "mod.audio") {
+			const AudioBusValues bus = getAudioBus();
+			const float gain = getParamFloat(node, "gain", 1.f);
+			const float attack = std::max(0.001f, getParamFloat(node, "attack", 0.02f));
+			const float release = std::max(0.001f, getParamFloat(node, "release", 0.25f));
+			auto follow = [&](const char* pinName, uint32_t slot, float target) {
+				float& s = scratchSlot(ctx, id, slot, 0.f);
+				const float tc = (target > s) ? attack : release;
+				s += (target - s) * (1.f - std::exp(-dt / tc));
+				if (const auto* p = pinByName(node, pinName, rigkit::ecs::NodePinKind::Out)) {
+					result.pinValue[pinKey(id, p->id)] = glm::vec4(s * gain);
+				}
+			};
+			follow("level", 0, bus.active ? bus.level : 0.f);
+			follow("bass", 1, bus.active ? bus.bass : 0.f);
+			follow("mid", 2, bus.active ? bus.mid : 0.f);
+			follow("treble", 3, bus.active ? bus.treble : 0.f);
 		} else if (t == "logic.compare") {
 			const float a = inF(graph, result, node, "a", 0.f);
 			const float b = inF(graph, result, node, "b", 0.f);
@@ -420,15 +473,18 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			setOutF(result, node, ok ? 1.f : 0.f);
 		} else if (t == "logic.gate") {
 			setOutF(result, node,
-					inF(graph, result, node, "gate", 0.f) >= 0.5f ? inF(graph, result, node, "in", 0.f)
-																  : 0.f);
+					inF(graph, result, node, "gate", 0.f) >= 0.5f
+						? inF(graph, result, node, "in", 0.f)
+						: 0.f);
 		} else if (t == "logic.switch") {
 			setOutF(result, node,
-					inF(graph, result, node, "sel", 0.f) >= 0.5f ? inF(graph, result, node, "b", 0.f)
-																 : inF(graph, result, node, "a", 0.f));
+					inF(graph, result, node, "sel", 0.f) >= 0.5f
+						? inF(graph, result, node, "b", 0.f)
+						: inF(graph, result, node, "a", 0.f));
 		} else if (t == "vec2.value") {
-			setOut(result, node,
-				   glm::vec4(getParamFloat(node, "x", 0.f), getParamFloat(node, "y", 0.f), 0.f, 0.f));
+			setOut(
+				result, node,
+				glm::vec4(getParamFloat(node, "x", 0.f), getParamFloat(node, "y", 0.f), 0.f, 0.f));
 		} else if (t == "vec2.split") {
 			const glm::vec4 v = inPin(graph, result, node, "in", "vec2", {});
 			if (const auto* x = pinByName(node, "x", rigkit::ecs::NodePinKind::Out)) {
@@ -439,8 +495,8 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			}
 		} else if (t == "vec2.join") {
 			setOut(result, node,
-				   glm::vec4(inF(graph, result, node, "x", 0.f), inF(graph, result, node, "y", 0.f), 0.f,
-							 0.f));
+				   glm::vec4(inF(graph, result, node, "x", 0.f), inF(graph, result, node, "y", 0.f),
+							 0.f, 0.f));
 		} else if (t == "vec2.add") {
 			setOut(result, node,
 				   inPin(graph, result, node, "a", "vec2", {}) +
@@ -463,7 +519,8 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 		} else if (t == "vec2.normalize") {
 			const glm::vec4 v = inPin(graph, result, node, "in", "vec2", {});
 			const float len = std::sqrt(v.x * v.x + v.y * v.y);
-			setOut(result, node, len < 1e-8f ? glm::vec4(0.f) : glm::vec4(v.x / len, v.y / len, 0.f, 0.f));
+			setOut(result, node,
+				   len < 1e-8f ? glm::vec4(0.f) : glm::vec4(v.x / len, v.y / len, 0.f, 0.f));
 		} else if (t == "vec2.dot") {
 			const glm::vec4 a = inPin(graph, result, node, "a", "vec2", {});
 			const glm::vec4 b = inPin(graph, result, node, "b", "vec2", {});
@@ -486,9 +543,11 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 		} else if (t == "color.join") {
 			setOut(result, node,
 				   glm::vec4(inF(graph, result, node, "r", 1.f), inF(graph, result, node, "g", 1.f),
-							 inF(graph, result, node, "b", 1.f), inF(graph, result, node, "a", 1.f)));
+							 inF(graph, result, node, "b", 1.f),
+							 inF(graph, result, node, "a", 1.f)));
 		} else if (t == "color.mix") {
-			const glm::vec4 a = inPin(graph, result, node, "a", "vec4", glm::vec4(0.f, 0.f, 0.f, 1.f));
+			const glm::vec4 a =
+				inPin(graph, result, node, "a", "vec4", glm::vec4(0.f, 0.f, 0.f, 1.f));
 			const glm::vec4 b = inPin(graph, result, node, "b", "vec4", glm::vec4(1.f));
 			const float m = inF(graph, result, node, "t", 0.5f);
 			setOut(result, node, a + (b - a) * m);
@@ -498,8 +557,7 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			setOut(result, node, glm::vec4(c.r * g, c.g * g, c.b * g, c.a));
 		} else if (t == "float.out") {
 			const auto* in = pinByName(node, "in", rigkit::ecs::NodePinKind::In);
-			const float v =
-				in ? linkedIn(graph, result, id, in->id, "float", {}).x : 0.f;
+			const float v = in ? linkedIn(graph, result, id, in->id, "float", {}).x : 0.f;
 			if (in) {
 				result.pinValue[pinKey(id, in->id)] = glm::vec4(v);
 			}
@@ -529,8 +587,7 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			}
 		} else if (t == "ref.float") {
 			const auto* in = pinByName(node, "in", rigkit::ecs::NodePinKind::In);
-			const float v =
-				in ? linkedIn(graph, result, id, in->id, "float", {}).x : 0.f;
+			const float v = in ? linkedIn(graph, result, id, in->id, "float", {}).x : 0.f;
 			if (in) {
 				result.pinValue[pinKey(id, in->id)] = glm::vec4(v);
 			}
@@ -611,6 +668,10 @@ EvalResult evaluateAlongDive(const rigkit::ecs::NodeGraphData& root,
 		for (const auto& pub : node->publishes) {
 			const auto* outer = g->findPin(id, pub.pin);
 			if (!outer || outer->kind != rigkit::ecs::NodePinKind::In) {
+				continue;
+			}
+			if (!pinHasIncoming(*g, id, pub.pin) &&
+				parentEv.pinValue.find(pinKey(id, pub.pin)) == parentEv.pinValue.end()) {
 				continue;
 			}
 			seed[pinKey(pub.innerNode, pub.innerPin)] =

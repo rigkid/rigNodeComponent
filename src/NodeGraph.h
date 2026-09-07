@@ -1,11 +1,11 @@
 #pragma once
 
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "ecs/MEcs.h"
 #include "CNodeGraph.h"
+#include "ecs/MEcs.h"
 
 namespace rig {
 namespace node {
@@ -28,8 +28,8 @@ entt::entity makeGraph(rigkit::MEcs& ecs, std::string_view name = "node-graph");
 uint32_t addNode(rigkit::ecs::NodeGraphData& graph, std::string_view typeId, std::string_view title,
 				 glm::vec2 pos, const std::vector<PinDesc>& pins);
 
-bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin, uint32_t toNode,
-			 uint32_t toPin);
+bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin,
+			 uint32_t toNode, uint32_t toPin);
 
 bool tryLinkByName(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, std::string_view fromPin,
 				   uint32_t toNode, std::string_view toPin);
@@ -61,6 +61,19 @@ uint32_t createEmptyGroup(rigkit::ecs::NodeGraphData& graph, glm::vec2 pos,
  */
 bool ungroup(rigkit::ecs::NodeGraphData& graph, uint32_t groupId);
 
+/** @brief True when @p typeId is `graph.input` / `graph.output` (group interface nodes). */
+bool isGraphExportType(std::string_view typeId);
+
+/**
+ * @brief Sync every group's outer pins with the Export In / Export Out nodes inside it.
+ * @details Recursive. For each `graph.input` / `graph.output` node in a group's nested
+ * graph: sync the inner pin's name/type from the node's `name`/`type` params and
+ * ensure a publish + outer pin exists (kind flipped: Export In's Out pin becomes an
+ * outer In pin and vice versa). Publishes whose interior pin no longer exists are
+ * pruned along with their outer pin and any parent links to it. Editors call this
+ * once per frame; `createGroup` calls it on the new group.
+ */
+void syncGroupInterfaces(rigkit::ecs::NodeGraphData& graph);
 
 float getParamFloat(const rigkit::ecs::GraphNode& node, std::string_view key, float fallback = 0.f);
 void setParamFloat(rigkit::ecs::GraphNode& node, std::string_view key, float value,

@@ -76,8 +76,7 @@ int main() {
 	}
 	ev = rig::node::evaluateGraph(graph);
 	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 5.f)) {
-		std::printf("node_smoke FAIL vec2 length=%f\n",
-					ev.outputs.empty() ? -1.f : ev.outputs[0]);
+		std::printf("node_smoke FAIL vec2 length=%f\n", ev.outputs.empty() ? -1.f : ev.outputs[0]);
 		return 1;
 	}
 
@@ -152,8 +151,7 @@ int main() {
 		}
 	}
 	if (groupOutPin == 0 ||
-		!rig::node::tryLink(graph, gid, groupOutPin, gout,
-							graph.findNode(gout)->pins[0].id)) {
+		!rig::node::tryLink(graph, gid, groupOutPin, gout, graph.findNode(gout)->pins[0].id)) {
 		std::printf("node_smoke FAIL group out link\n");
 		return 1;
 	}
@@ -243,6 +241,83 @@ int main() {
 		return 1;
 	}
 
-	std::printf("node_smoke ok groups + nested inject + dive + ungroup\n");
+	// Export In / Export Out define a collapsed group's interface.
+	// in("a", default 2) -> add.a, value(3) -> add.b, add.out -> out("sum")
+	graph = {};
+	const uint32_t exIn = rig::node::spawnCatalogNode(graph, "graph.input", {0.f, 0.f});
+	const uint32_t exVal = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 80.f});
+	const uint32_t exAdd = rig::node::spawnCatalogNode(graph, "float.add", {200.f, 40.f});
+	const uint32_t exOut = rig::node::spawnCatalogNode(graph, "graph.output", {400.f, 40.f});
+	{
+		auto* nIn = graph.findNode(exIn);
+		auto* nVal = graph.findNode(exVal);
+		auto* nOut = graph.findNode(exOut);
+		if (!nIn || !nVal || !nOut) {
+			std::printf("node_smoke FAIL export spawn\n");
+			return 1;
+		}
+		rig::node::setParamString(*nIn, "name", "a");
+		rig::node::setParamFloat(*nIn, "value", 2.f); // default when unconnected
+		rig::node::setParamFloat(*nVal, "value", 3.f);
+		rig::node::setParamString(*nOut, "name", "sum");
+	}
+	if (!rig::node::tryLinkByName(graph, exIn, "in", exAdd, "a") ||
+		!rig::node::tryLinkByName(graph, exVal, "out", exAdd, "b") ||
+		!rig::node::tryLinkByName(graph, exAdd, "out", exOut, "out")) {
+		std::printf("node_smoke FAIL export link\n");
+		return 1;
+	}
+	const uint32_t exGid =
+		rig::node::createGroup(graph, {exIn, exVal, exAdd, exOut}, {0.f, 0.f}, "Comp");
+	auto* exG = graph.findNode(exGid);
+	if (!exG || !exG->isGroup()) {
+		std::printf("node_smoke FAIL export collapse\n");
+		return 1;
+	}
+	uint32_t pinA = 0;
+	uint32_t pinSum = 0;
+	for (const auto& p : exG->pins) {
+		if (p.kind == rigkit::ecs::NodePinKind::In && p.name == "a") {
+			pinA = p.id;
+		} else if (p.kind == rigkit::ecs::NodePinKind::Out && p.name == "sum") {
+			pinSum = p.id;
+		}
+	}
+	if (pinA == 0 || pinSum == 0 || exG->pins.size() != 2) {
+		std::printf("node_smoke FAIL export interface pins=%zu a=%u sum=%u\n", exG->pins.size(),
+					pinA, pinSum);
+		return 1;
+	}
+	const uint32_t exFOut = rig::node::spawnCatalogNode(graph, "float.out", {600.f, 40.f});
+	if (!rig::node::tryLink(graph, exGid, pinSum, exFOut, graph.findNode(exFOut)->pins[0].id)) {
+		std::printf("node_smoke FAIL export out link\n");
+		return 1;
+	}
+	// Unconnected outer input -> Export In default applies: 2 + 3 = 5.
+	ev = rig::node::evaluateGraph(graph);
+	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 5.f)) {
+		std::printf("node_smoke FAIL export default eval=%f ok=%d err=%s\n",
+					ev.outputs.empty() ? -1.f : ev.outputs[0], ev.ok ? 1 : 0, ev.error.c_str());
+		return 1;
+	}
+	// Drive the outer input: 4 + 3 = 7.
+	const uint32_t exDrive = rig::node::spawnCatalogNode(graph, "float.value", {-200.f, 40.f});
+	auto* nDrive = graph.findNode(exDrive);
+	if (!nDrive) {
+		return 1;
+	}
+	rig::node::setParamFloat(*nDrive, "value", 4.f);
+	if (!rig::node::tryLink(graph, exDrive, nDrive->pins[0].id, exGid, pinA)) {
+		std::printf("node_smoke FAIL export drive link\n");
+		return 1;
+	}
+	ev = rig::node::evaluateGraph(graph);
+	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 7.f)) {
+		std::printf("node_smoke FAIL export driven eval=%f ok=%d err=%s\n",
+					ev.outputs.empty() ? -1.f : ev.outputs[0], ev.ok ? 1 : 0, ev.error.c_str());
+		return 1;
+	}
+
+	std::printf("node_smoke ok groups + nested inject + dive + ungroup + export nodes\n");
 	return 0;
 }

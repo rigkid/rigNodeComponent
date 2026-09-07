@@ -30,6 +30,8 @@ endif()
 add_library(${PACK_NAME} STATIC
 	src/rigNodeComponent.cpp
 	src/rigNodeComponent.h
+	src/AudioBus.cpp
+	src/AudioBus.h
 	src/CNodeGraph.cpp
 	src/CNodeGraph.h
 	src/NodeGraph.cpp
