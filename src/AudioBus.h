@@ -19,11 +19,36 @@ struct AudioBusValues {
 	bool active = false;
 };
 
+/**
+ * @brief Waveform + FFT packed the way ISF hosts serve `audio` / `audioFFT`.
+ * @details Two rows (L/R). Wave samples are 0.5-centered amplitude. FFT bins
+ * are 0..1 magnitudes from DC (x=0) to Nyquist (last column).
+ */
+struct AudioSpectrum {
+	static constexpr int kChannels = 2;
+	static constexpr int kWave = 1024;
+	static constexpr int kFft = 512;
+	float wave[kChannels][kWave]{};
+	float fft[kChannels][kFft]{};
+	int channels = 2;
+	bool active = false;
+
+	AudioSpectrum() {
+		for (int ch = 0; ch < kChannels; ++ch) {
+			for (int i = 0; i < kWave; ++i) {
+				wave[ch][i] = 0.5f;
+			}
+		}
+	}
+};
+
 /** @brief Publish this frame's audio analysis (main thread, once per frame). */
 void setAudioBus(const AudioBusValues& v);
+void setAudioSpectrum(const AudioSpectrum& s);
 
 /** @brief Last published analysis (all zeros when no publisher runs). */
 AudioBusValues getAudioBus();
+const AudioSpectrum& getAudioSpectrum();
 
 } // namespace node
 } // namespace rig
