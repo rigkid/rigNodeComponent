@@ -42,13 +42,29 @@ struct AudioSpectrum {
 	}
 };
 
+/**
+ * @brief Live control voltages read by `mod.cv` nodes.
+ * @details A capture pack (e.g. rigAudio driving a DC-coupled interface such as
+ * an Expert Sleepers ES-8/9) publishes per-channel DC levels once per frame.
+ * Values are normalized -1..1 where full scale is the interface's CV range
+ * (±10V on the ES-9). `active` is false while no CV device is running.
+ */
+struct CvBusValues {
+	static constexpr int kMaxChannels = 16;
+	float value[kMaxChannels]{};
+	int channels = 0;
+	bool active = false;
+};
+
 /** @brief Publish this frame's audio analysis (main thread, once per frame). */
 void setAudioBus(const AudioBusValues& v);
 void setAudioSpectrum(const AudioSpectrum& s);
+void setCvBus(const CvBusValues& v);
 
 /** @brief Last published analysis (all zeros when no publisher runs). */
 AudioBusValues getAudioBus();
 const AudioSpectrum& getAudioSpectrum();
+CvBusValues getCvBus();
 
 } // namespace node
 } // namespace rig

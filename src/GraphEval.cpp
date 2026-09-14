@@ -444,6 +444,22 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 			follow("bass", 1, bus.active ? bus.bass : 0.f);
 			follow("mid", 2, bus.active ? bus.mid : 0.f);
 			follow("treble", 3, bus.active ? bus.treble : 0.f);
+		} else if (t == "mod.cv") {
+			const CvBusValues cv = getCvBus();
+			const int ch =
+				std::clamp(static_cast<int>(getParamFloat(node, "channel", 1.f)) - 1, 0,
+						   CvBusValues::kMaxChannels - 1);
+			const float raw = (cv.active && ch < cv.channels) ? cv.value[ch] : 0.f;
+			const float target =
+				raw * getParamFloat(node, "scale", 1.f) + getParamFloat(node, "offset", 0.f);
+			const float slew = getParamFloat(node, "slew", 0.005f);
+			float& s = scratchSlot(ctx, id, 0, target);
+			if (slew <= 0.f) {
+				s = target;
+			} else {
+				s += (target - s) * (1.f - std::exp(-dt / slew));
+			}
+			setOutF(result, node, s);
 		} else if (t == "logic.compare") {
 			const float a = inF(graph, result, node, "a", 0.f);
 			const float b = inF(graph, result, node, "b", 0.f);

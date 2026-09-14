@@ -124,6 +124,17 @@ std::vector<CatalogEntry> makeCatalog() {
 				 {{"gain", "Gain", 1.f, 0.f, 20.f, 0.01f},
 				  {"attack", "Attack", 0.02f, 0.001f, 1.f, 0.001f},
 				  {"release", "Release", 0.25f, 0.001f, 2.f, 0.001f}}});
+	// Live control voltage from a DC-coupled interface (see AudioBus.h CvBusValues).
+	// One node = one channel, modular style. Raw bus value is -1..1 (±10V full
+	// scale on an ES-8/9); out = raw * scale + offset, slewed over `slew` seconds.
+	c.push_back({"mod.cv",
+				 "CV In",
+				 "Modulators",
+				 valueOut(),
+				 {{"channel", "Channel", 1.f, 1.f, 16.f, 1.f},
+				  {"scale", "Scale", 1.f, -100.f, 100.f, 0.01f},
+				  {"offset", "Offset", 0.f, -100.f, 100.f, 0.01f},
+				  {"slew", "Slew s", 0.005f, 0.f, 5.f, 0.001f}}});
 
 	// Logic
 	c.push_back({"logic.compare",
