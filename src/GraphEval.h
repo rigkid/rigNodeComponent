@@ -57,11 +57,6 @@ inline EvalResult evaluateGraph(const rigkit::ecs::CNodeGraph& graph, const Eval
 	return evaluateGraph(static_cast<const rigkit::ecs::NodeGraphData&>(graph), ctx);
 }
 
-inline EvalResult evaluateFloatGraph(const rigkit::ecs::CNodeGraph& graph,
-									 const EvalContext& ctx = {}) {
-	return evaluateGraph(graph, ctx);
-}
-
 /**
  * @brief Evaluate the graph at the end of a dive path, seeding each level from parent publishes.
  * @details `divePath` is group node ids from root downward. Empty path = evaluate `root`.

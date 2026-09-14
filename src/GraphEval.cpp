@@ -159,8 +159,10 @@ float& scratchSlot(EvalContext& ctx, uint32_t nodeId, uint32_t slot, float init)
 	return it->second;
 }
 
-EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const EvalContext& ctxIn,
-							 const std::unordered_map<uint64_t, glm::vec4>& seed) {
+} // namespace
+
+EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalContext& ctxIn,
+						 const std::unordered_map<uint64_t, glm::vec4>& seed) {
 	EvalContext ctx = ctxIn;
 	EvalResult result;
 	result.pinValue = seed;
@@ -235,7 +237,7 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 				nestedSeed[pinKey(pub.innerNode, pub.innerPin)] =
 					linkedIn(graph, result, id, pub.pin, outer->type, {});
 			}
-			EvalResult nestedOut = evaluateGraphImpl(*node.nested, nestedCtx, nestedSeed);
+			EvalResult nestedOut = evaluateGraph(*node.nested, nestedCtx, nestedSeed);
 			if (!nestedOut.ok) {
 				result.error = nestedOut.error.empty() ? "group eval failed" : nestedOut.error;
 				return result;
@@ -655,13 +657,6 @@ EvalResult evaluateGraphImpl(const rigkit::ecs::NodeGraphData& graph, const Eval
 	return result;
 }
 
-} // namespace
-
-EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalContext& ctx,
-						 const std::unordered_map<uint64_t, glm::vec4>& seed) {
-	return evaluateGraphImpl(graph, ctx, seed);
-}
-
 EvalResult evaluateAlongDive(const rigkit::ecs::NodeGraphData& root,
 							 const std::vector<uint32_t>& divePath, const EvalContext& ctx) {
 	if (divePath.empty()) {
@@ -695,7 +690,7 @@ EvalResult evaluateAlongDive(const rigkit::ecs::NodeGraphData& root,
 		}
 		EvalContext nestedCtx = ctx;
 		nestedCtx.collectOutputs = (depth + 1 == divePath.size());
-		parentEv = evaluateGraphImpl(*node->nested, nestedCtx, seed);
+		parentEv = evaluateGraph(*node->nested, nestedCtx, seed);
 		if (!parentEv.ok) {
 			return parentEv;
 		}
