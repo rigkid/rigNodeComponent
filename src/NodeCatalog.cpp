@@ -124,6 +124,19 @@ std::vector<CatalogEntry> makeCatalog() {
 				 {{"gain", "Gain", 1.f, 0.f, 20.f, 0.01f},
 				  {"attack", "Attack", 0.02f, 0.001f, 1.f, 0.001f},
 				  {"release", "Release", 0.25f, 0.001f, 2.f, 0.001f}}});
+	// Shared musical clock (see AudioBus.h TempoBusValues - the host publishes
+	// tap tempo / MIDI clock / Link). Free-runs at the BPM param when no clock
+	// source is active, so patches animate everywhere.
+	c.push_back({"mod.beat",
+				 "Beat",
+				 "Modulators",
+				 {{"phase", Kind::Out, "float"},
+				  {"bar", Kind::Out, "float"},
+				  {"pulse", Kind::Out, "float"},
+				  {"bpm", Kind::Out, "float"}},
+				 {{"beats", "Cycle beats", 1.f, 0.0625f, 64.f, 0.01f},
+				  {"pulseW", "Pulse width", 0.1f, 0.01f, 0.9f, 0.01f},
+				  {"bpm", "BPM (no clock)", 120.f, 20.f, 300.f, 0.1f}}});
 	// Live control voltage from a DC-coupled interface (see AudioBus.h CvBusValues).
 	// One node = one channel, modular style. Raw bus value is -1..1 (±10V full
 	// scale on an ES-8/9); out = raw * scale + offset, slewed over `slew` seconds.
@@ -135,6 +148,33 @@ std::vector<CatalogEntry> makeCatalog() {
 				  {"scale", "Scale", 1.f, -100.f, 100.f, 0.01f},
 				  {"offset", "Offset", 0.f, -100.f, 100.f, 0.01f},
 				  {"slew", "Slew s", 0.005f, 0.f, 5.f, 0.001f}}});
+
+	// MIDI (see MidiBus.h). A MIDI pack (rigMidi) publishes input and drains
+	// the out queue onto a device. Nodes still evaluate without that pack
+	// (in = 0, out messages sit until something takes them).
+	c.push_back({"midi.in",
+				 "MIDI In",
+				 "MIDI",
+				 {{"gate", Kind::Out, "float"},
+				  {"note", Kind::Out, "float"},
+				  {"vel", Kind::Out, "float"},
+				  {"pulse", Kind::Out, "float"},
+				  {"cc", Kind::Out, "float"}},
+				 {{"ch", "Channel", 0.f, 0.f, 16.f, 1.f},
+				  {"ccNum", "CC", 1.f, 0.f, 127.f, 1.f}}});
+	c.push_back({"midi.note",
+				 "MIDI Note",
+				 "MIDI",
+				 {{"gate", Kind::In, "float"}, {"on", Kind::Out, "float"}},
+				 {{"note", "Note", 60.f, 0.f, 127.f, 1.f},
+				  {"vel", "Vel", 100.f, 1.f, 127.f, 1.f},
+				  {"ch", "Channel", 1.f, 1.f, 16.f, 1.f}}});
+	c.push_back({"midi.cc",
+				 "MIDI CC",
+				 "MIDI",
+				 {{"value", Kind::In, "float"}, {"out", Kind::Out, "float"}},
+				 {{"cc", "CC", 1.f, 0.f, 127.f, 1.f},
+				  {"ch", "Channel", 1.f, 1.f, 16.f, 1.f}}});
 
 	// Logic
 	c.push_back({"logic.compare",
@@ -300,6 +340,39 @@ std::vector<CatalogEntry> makeCatalog() {
 				 {strParam("name", "Name"),
 				  {"type", "Type", 0.f, 0.f, 2.f, 1.f, 1, kPortTypeLabels, "enum"}}});
 
+	// Reflect numeric params into modulation input pins (pin name == param key).
+	// The evaluator prefers a connected pin and falls back to the knob value.
+	// Skipped: value sources (the knob *is* the output), Clamp (range already
+	// exposed as the b/c pins) and group interface nodes.
+	auto reflectParamPins = [](CatalogEntry& e) {
+		static constexpr const char* kKnobOnly[] = {"float.value", "vec2.value",  "color.value",
+													"float.clamp", "graph.input", "graph.output"};
+		for (const char* skip : kKnobOnly) {
+			if (std::string_view(e.typeId) == skip) {
+				return;
+			}
+		}
+		for (const auto& p : e.params) {
+			const std::string_view ty = p.type ? p.type : "";
+			if (ty == "string" || ty == "enum" || p.ui == 1) {
+				continue; // names / combos stay knob-only
+			}
+			bool exists = false;
+			for (const auto& pin : e.pins) {
+				if (pin.name == p.key) {
+					exists = true;
+					break;
+				}
+			}
+			if (!exists) {
+				e.pins.push_back({p.key, Kind::In, "float"});
+			}
+		}
+	};
+	for (auto& e : c) {
+		reflectParamPins(e);
+	}
+
 	return c;
 }
 
@@ -360,6 +433,38 @@ uint32_t spawnCatalogNode(rigkit::ecs::NodeGraphData& graph, std::string_view ty
 		}
 	}
 	return id;
+}
+
+void syncCatalogPins(rigkit::ecs::NodeGraphData& graph) {
+	for (auto& n : graph.nodes) {
+		if (n.nested) {
+			// Groups carry interface pins (see syncGroupInterfaces), not catalog pins.
+			syncCatalogPins(*n.nested);
+			continue;
+		}
+		const CatalogEntry* e = findCatalogEntry(n.typeId);
+		if (!e) {
+			continue;
+		}
+		for (const auto& d : e->pins) {
+			bool exists = false;
+			for (const auto& pin : n.pins) {
+				if (pin.name == d.name && pin.kind == d.kind) {
+					exists = true;
+					break;
+				}
+			}
+			if (exists) {
+				continue;
+			}
+			rigkit::ecs::NodePin pin;
+			pin.id = graph.allocId();
+			pin.name = d.name;
+			pin.kind = d.kind;
+			pin.type = normalizePinType(d.type);
+			n.pins.push_back(std::move(pin));
+		}
+	}
 }
 
 } // namespace node

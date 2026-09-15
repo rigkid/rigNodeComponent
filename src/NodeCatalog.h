@@ -49,5 +49,13 @@ std::vector<const char*> catalogCategories();
  */
 uint32_t spawnCatalogNode(rigkit::ecs::NodeGraphData& graph, std::string_view typeId, glm::vec2 pos);
 
+/**
+ * @brief Add catalog pins missing from existing nodes (recursive into groups).
+ * @details Migration for graphs saved before params were reflected as input
+ * pins. Only adds - never removes or re-orders. Editors call this per frame
+ * next to `syncGroupInterfaces`.
+ */
+void syncCatalogPins(rigkit::ecs::NodeGraphData& graph);
+
 } // namespace node
 } // namespace rig

@@ -7,6 +7,7 @@ namespace {
 AudioBusValues g_bus;
 AudioSpectrum g_spectrum;
 CvBusValues g_cv;
+TempoBusValues g_tempo;
 
 } // namespace
 
@@ -22,6 +23,10 @@ void setCvBus(const CvBusValues& v) {
 	g_cv = v;
 }
 
+void setTempoBus(const TempoBusValues& v) {
+	g_tempo = v;
+}
+
 AudioBusValues getAudioBus() {
 	return g_bus;
 }
@@ -32,6 +37,10 @@ const AudioSpectrum& getAudioSpectrum() {
 
 CvBusValues getCvBus() {
 	return g_cv;
+}
+
+TempoBusValues getTempoBus() {
+	return g_tempo;
 }
 
 } // namespace node

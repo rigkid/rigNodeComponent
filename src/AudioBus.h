@@ -56,15 +56,32 @@ struct CvBusValues {
 	bool active = false;
 };
 
+/**
+ * @brief Shared musical clock read by `mod.beat` nodes.
+ * @details The host publishes once per frame from whatever source it has (tap
+ * tempo, MIDI clock, Link, beat detection) - the bus doesn't care. `beat` is
+ * the running quarter-note count; a double keeps phase precise over long sets.
+ * While `active` is false, `mod.beat` free-runs from eval time at its own
+ * BPM param, so patches still animate without a clock source.
+ */
+struct TempoBusValues {
+	double beat = 0.0; ///< Running beat count (quarter notes)
+	float bpm = 120.f;
+	float beatsPerBar = 4.f;
+	bool active = false;
+};
+
 /** @brief Publish this frame's audio analysis (main thread, once per frame). */
 void setAudioBus(const AudioBusValues& v);
 void setAudioSpectrum(const AudioSpectrum& s);
 void setCvBus(const CvBusValues& v);
+void setTempoBus(const TempoBusValues& v);
 
 /** @brief Last published analysis (all zeros when no publisher runs). */
 AudioBusValues getAudioBus();
 const AudioSpectrum& getAudioSpectrum();
 CvBusValues getCvBus();
+TempoBusValues getTempoBus();
 
 } // namespace node
 } // namespace rig

@@ -7,6 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 #include "AudioBus.h"
+#include "MidiBus.h"
 #include "NodeGraph.h"
 
 #ifndef M_PI
@@ -217,6 +218,11 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 		}
 		const auto& node = *nodePtr;
 		const std::string_view t = node.typeId;
+		// Numeric params double as input pins (see reflectParamPins in the
+		// catalog): a connected pin overrides the knob value.
+		auto pf = [&](std::string_view key, float def) {
+			return inF(graph, result, node, key, getParamFloat(node, key, def));
+		};
 
 		if (node.isGroup()) {
 			EvalContext nestedCtx = ctx;
@@ -336,10 +342,10 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			setOutF(result, node, std::clamp(v, std::min(lo, hi), std::max(lo, hi)));
 		} else if (t == "float.map") {
 			const float v = inF(graph, result, node, "in", 0.f);
-			const float inMin = getParamFloat(node, "inMin", 0.f);
-			const float inMax = getParamFloat(node, "inMax", 1.f);
-			const float outMin = getParamFloat(node, "outMin", 0.f);
-			const float outMax = getParamFloat(node, "outMax", 1.f);
+			const float inMin = pf("inMin", 0.f);
+			const float inMax = pf("inMax", 1.f);
+			const float outMin = pf("outMin", 0.f);
+			const float outMax = pf("outMax", 1.f);
 			const float denom = inMax - inMin;
 			const float n = (std::fabs(denom) < 1e-8f) ? 0.f : (v - inMin) / denom;
 			setOutF(result, node, outMin + n * (outMax - outMin));
@@ -360,23 +366,23 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 				(std::fabs(e1 - e0) < 1e-8f) ? 0.f : std::clamp((x - e0) / (e1 - e0), 0.f, 1.f);
 			setOutF(result, node, tn * tn * (3.f - 2.f * tn));
 		} else if (t == "mod.lfo") {
-			const float freq = getParamFloat(node, "freq", 1.f);
-			const float amp = getParamFloat(node, "amp", 1.f);
-			const float offset = getParamFloat(node, "offset", 0.f);
-			const float phase = getParamFloat(node, "phase", 0.f);
+			const float freq = pf("freq", 1.f);
+			const float amp = pf("amp", 1.f);
+			const float offset = pf("offset", 0.f);
+			const float phase = pf("phase", 0.f);
 			const int wave = static_cast<int>(getParamFloat(node, "wave", 0.f));
 			setOutF(result, node, offset + amp * lfoWave(ctx.time * freq + phase, wave));
 		} else if (t == "mod.noise") {
-			const float freq = getParamFloat(node, "freq", 1.f);
-			const float amp = getParamFloat(node, "amp", 1.f);
-			const float offset = getParamFloat(node, "offset", 0.f);
-			const float seed = getParamFloat(node, "seed", 0.f);
+			const float freq = pf("freq", 1.f);
+			const float amp = pf("amp", 1.f);
+			const float offset = pf("offset", 0.f);
+			const float seed = pf("seed", 0.f);
 			setOutF(result, node, offset + amp * (valueNoise(ctx.time * freq, seed) * 2.f - 1.f));
 		} else if (t == "mod.random") {
-			const float rate = std::max(0.01f, getParamFloat(node, "rate", 2.f));
-			const float lo = getParamFloat(node, "min", 0.f);
-			const float hi = getParamFloat(node, "max", 1.f);
-			const float seed = getParamFloat(node, "seed", 1.f);
+			const float rate = std::max(0.01f, pf("rate", 2.f));
+			const float lo = pf("min", 0.f);
+			const float hi = pf("max", 1.f);
+			const float seed = pf("seed", 1.f);
 			float& held = scratchSlot(ctx, id, 0, lo);
 			float& nextT = scratchSlot(ctx, id, 1, ctx.time);
 			if (ctx.time >= nextT) {
@@ -385,17 +391,17 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			}
 			setOutF(result, node, held);
 		} else if (t == "mod.ramp") {
-			const float period = std::max(0.01f, getParamFloat(node, "period", 2.f));
-			const float from = getParamFloat(node, "from", 0.f);
-			const float to = getParamFloat(node, "to", 1.f);
+			const float period = std::max(0.01f, pf("period", 2.f));
+			const float from = pf("from", 0.f);
+			const float to = pf("to", 1.f);
 			const float u = (ctx.time / period) - std::floor(ctx.time / period);
 			setOutF(result, node, from + (to - from) * u);
 		} else if (t == "mod.envelope") {
 			const float gate = inF(graph, result, node, "gate", 0.f);
-			const float attack = std::max(0.001f, getParamFloat(node, "attack", 0.05f));
-			const float decay = std::max(0.001f, getParamFloat(node, "decay", 0.1f));
-			const float sustain = std::clamp(getParamFloat(node, "sustain", 0.7f), 0.f, 1.f);
-			const float release = std::max(0.001f, getParamFloat(node, "release", 0.2f));
+			const float attack = std::max(0.001f, pf("attack", 0.05f));
+			const float decay = std::max(0.001f, pf("decay", 0.1f));
+			const float sustain = std::clamp(pf("sustain", 0.7f), 0.f, 1.f);
+			const float release = std::max(0.001f, pf("release", 0.2f));
 			float& level = scratchSlot(ctx, id, 0, 0.f);
 			float& stage = scratchSlot(ctx, id, 1, 0.f);
 			const bool on = gate >= 0.5f;
@@ -429,11 +435,33 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 				}
 			}
 			setOutF(result, node, std::clamp(level, 0.f, 1.f));
+		} else if (t == "mod.beat") {
+			const TempoBusValues tempo = getTempoBus();
+			const float beats = std::max(0.01f, pf("beats", 1.f));
+			const float pw = std::clamp(pf("pulseW", 0.1f), 0.01f, 0.99f);
+			const float fallbackBpm = std::max(1.f, pf("bpm", 120.f));
+			// No clock source -> free-run from eval time at the BPM knob.
+			const double beat = tempo.active
+									? tempo.beat
+									: static_cast<double>(ctx.time) * fallbackBpm / 60.0;
+			const float bpb = tempo.active ? std::max(1.f, tempo.beatsPerBar) : 4.f;
+			const double cycle = beat / static_cast<double>(beats);
+			const double barCycle = beat / static_cast<double>(bpb);
+			const float phase = static_cast<float>(cycle - std::floor(cycle));
+			auto putOut = [&](const char* name, float v) {
+				if (const auto* p = pinByName(node, name, rigkit::ecs::NodePinKind::Out)) {
+					result.pinValue[pinKey(id, p->id)] = glm::vec4(v);
+				}
+			};
+			putOut("phase", phase);
+			putOut("bar", static_cast<float>(barCycle - std::floor(barCycle)));
+			putOut("pulse", phase < pw ? 1.f : 0.f);
+			putOut("bpm", tempo.active ? tempo.bpm : fallbackBpm);
 		} else if (t == "mod.audio") {
 			const AudioBusValues bus = getAudioBus();
-			const float gain = getParamFloat(node, "gain", 1.f);
-			const float attack = std::max(0.001f, getParamFloat(node, "attack", 0.02f));
-			const float release = std::max(0.001f, getParamFloat(node, "release", 0.25f));
+			const float gain = pf("gain", 1.f);
+			const float attack = std::max(0.001f, pf("attack", 0.02f));
+			const float release = std::max(0.001f, pf("release", 0.25f));
 			auto follow = [&](const char* pinName, uint32_t slot, float target) {
 				float& s = scratchSlot(ctx, id, slot, 0.f);
 				const float tc = (target > s) ? attack : release;
@@ -448,13 +476,11 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			follow("treble", 3, bus.active ? bus.treble : 0.f);
 		} else if (t == "mod.cv") {
 			const CvBusValues cv = getCvBus();
-			const int ch =
-				std::clamp(static_cast<int>(getParamFloat(node, "channel", 1.f)) - 1, 0,
-						   CvBusValues::kMaxChannels - 1);
+			const int ch = std::clamp(static_cast<int>(pf("channel", 1.f)) - 1, 0,
+									  CvBusValues::kMaxChannels - 1);
 			const float raw = (cv.active && ch < cv.channels) ? cv.value[ch] : 0.f;
-			const float target =
-				raw * getParamFloat(node, "scale", 1.f) + getParamFloat(node, "offset", 0.f);
-			const float slew = getParamFloat(node, "slew", 0.005f);
+			const float target = raw * pf("scale", 1.f) + pf("offset", 0.f);
+			const float slew = pf("slew", 0.005f);
 			float& s = scratchSlot(ctx, id, 0, target);
 			if (slew <= 0.f) {
 				s = target;
@@ -462,11 +488,65 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 				s += (target - s) * (1.f - std::exp(-dt / slew));
 			}
 			setOutF(result, node, s);
+		} else if (t == "midi.in") {
+			const MidiInValues bus = getMidiIn();
+			const int wantCh = static_cast<int>(pf("ch", 0.f));
+			const bool match = bus.active && (wantCh <= 0 || wantCh == bus.channel);
+			const int ccNum = std::clamp(static_cast<int>(pf("ccNum", 1.f)), 0, 127);
+			auto putOut = [&](const char* name, float v) {
+				if (const auto* p = pinByName(node, name, rigkit::ecs::NodePinKind::Out)) {
+					result.pinValue[pinKey(id, p->id)] = glm::vec4(v);
+				}
+			};
+			putOut("gate", match && bus.gate ? 1.f : 0.f);
+			putOut("note", match ? bus.note : 0.f);
+			putOut("vel", match ? bus.vel : 0.f);
+			putOut("pulse", match && bus.noteOn ? 1.f : 0.f);
+			putOut("cc", match ? bus.cc[ccNum] : 0.f);
+		} else if (t == "midi.note") {
+			const float gate = inF(graph, result, node, "gate", pf("gate", 0.f));
+			const int note = std::clamp(static_cast<int>(pf("note", 60.f)), 0, 127);
+			const int vel = std::clamp(static_cast<int>(pf("vel", 100.f)), 1, 127);
+			const int ch = std::clamp(static_cast<int>(pf("ch", 1.f)), 1, 16);
+			float& prevGate = scratchSlot(ctx, id, 0, 0.f);
+			float& heldNote = scratchSlot(ctx, id, 1, -1.f);
+			const bool on = gate >= 0.5f;
+			const bool was = prevGate >= 0.5f;
+			const uint8_t statusOn = static_cast<uint8_t>(0x90 | (ch - 1));
+			const uint8_t statusOff = static_cast<uint8_t>(0x80 | (ch - 1));
+			if (on && !was) {
+				pushMidiOut(statusOn, static_cast<uint8_t>(note), static_cast<uint8_t>(vel));
+				heldNote = static_cast<float>(note);
+			} else if (on && was && static_cast<int>(heldNote) != note && heldNote >= 0.f) {
+				pushMidiOut(statusOff, static_cast<uint8_t>(heldNote), 0);
+				pushMidiOut(statusOn, static_cast<uint8_t>(note), static_cast<uint8_t>(vel));
+				heldNote = static_cast<float>(note);
+			} else if (!on && was && heldNote >= 0.f) {
+				pushMidiOut(statusOff, static_cast<uint8_t>(heldNote), 0);
+				heldNote = -1.f;
+			}
+			prevGate = on ? 1.f : 0.f;
+			if (const auto* p = pinByName(node, "on", rigkit::ecs::NodePinKind::Out)) {
+				result.pinValue[pinKey(id, p->id)] = glm::vec4(on && !was ? 1.f : 0.f);
+			}
+		} else if (t == "midi.cc") {
+			const float value = std::clamp(inF(graph, result, node, "value", pf("value", 0.f)), 0.f,
+										   1.f);
+			const int cc = std::clamp(static_cast<int>(pf("cc", 1.f)), 0, 127);
+			const int ch = std::clamp(static_cast<int>(pf("ch", 1.f)), 1, 16);
+			const int sent = static_cast<int>(std::lround(value * 127.f));
+			float& last = scratchSlot(ctx, id, 0, -1.f);
+			if (static_cast<int>(last) != sent) {
+				pushMidiOut(static_cast<uint8_t>(0xB0 | (ch - 1)), static_cast<uint8_t>(cc),
+							static_cast<uint8_t>(sent));
+				last = static_cast<float>(sent);
+			}
+			setOutF(result, node, value);
 		} else if (t == "logic.compare") {
 			const float a = inF(graph, result, node, "a", 0.f);
 			const float b = inF(graph, result, node, "b", 0.f);
 			const int op = static_cast<int>(getParamFloat(node, "op", 0.f));
-			const float eps = getParamFloat(node, "epsilon", 0.0001f);
+			const float eps = pf("epsilon", 0.0001f);
 			bool ok = false;
 			switch (op) {
 			case 1:
