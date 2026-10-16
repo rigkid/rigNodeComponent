@@ -1,5 +1,7 @@
+#include "AudioBus.h"
 #include "CNodeGraph.h"
 #include "GraphEval.h"
+#include "MusicQuantize.h"
 #include "NodeCatalog.h"
 #include "NodeGraph.h"
 
@@ -49,6 +51,32 @@ int main() {
 	const uint32_t out = rig::node::spawnCatalogNode(graph, "float.out", {200.f, 0.f});
 	if (!rig::node::tryLinkByName(graph, lfo, "out", out, "in")) {
 		std::printf("node_smoke FAIL LFO link\n");
+		return 1;
+	}
+	if (graph.links.empty() || !rig::node::canLink(graph, lfo, graph.links[0].fromPin, out,
+												   graph.links[0].toPin, graph.links[0].id)) {
+		std::printf("node_smoke FAIL canLink ignore self\n");
+		return 1;
+	}
+	const uint32_t val = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 80.f});
+	const auto* valNode = graph.findNode(val);
+	uint32_t valOut = 0;
+	if (valNode) {
+		for (const auto& p : valNode->pins) {
+			if (p.kind == rigkit::ecs::NodePinKind::Out) {
+				valOut = p.id;
+				break;
+			}
+		}
+	}
+	const uint32_t lfoOut = graph.links[0].fromPin;
+	const uint32_t outIn = graph.links[0].toPin;
+	if (!val || !valOut || !rig::node::relink(graph, graph.links[0].id, val, valOut, out, outIn)) {
+		std::printf("node_smoke FAIL relink\n");
+		return 1;
+	}
+	if (!rig::node::relink(graph, graph.links[0].id, lfo, lfoOut, out, outIn)) {
+		std::printf("node_smoke FAIL relink back\n");
 		return 1;
 	}
 	ctx.time = 0.25f;
@@ -319,5 +347,109 @@ int main() {
 	}
 
 	std::printf("node_smoke ok groups + nested inject + dive + ungroup + export nodes\n");
+
+	if (rig::node::quantizeMidi(62.f, 0, rig::node::MusicScale::Major) != 62 ||
+		rig::node::quantizeMidi(61.f, 0, rig::node::MusicScale::Major) != 60 ||
+		rig::node::quantizeMidi(61.f, 0, rig::node::MusicScale::Chromatic) != 61) {
+		std::printf("node_smoke FAIL quantizeMidi\n");
+		return 1;
+	}
+
+	graph = {};
+	const uint32_t qv = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 0.f});
+	const uint32_t qn = rig::node::spawnCatalogNode(graph, "mod.quantize", {200.f, 0.f});
+	const uint32_t qo = rig::node::spawnCatalogNode(graph, "float.out", {400.f, 0.f});
+	auto* nQv = graph.findNode(qv);
+	auto* nQn = graph.findNode(qn);
+	if (!nQv || !nQn) {
+		return 1;
+	}
+	rig::node::setParamFloat(*nQv, "value", 61.f);
+	rig::node::setParamFloat(*nQn, "scale", 1.f); // major
+	rig::node::setParamFloat(*nQn, "root", 0.f);
+	rig::node::setParamFloat(*nQn, "input", 0.f);
+	if (!rig::node::tryLinkByName(graph, qv, "out", qn, "in") ||
+		!rig::node::tryLinkByName(graph, qn, "midi", qo, "in")) {
+		std::printf("node_smoke FAIL quantize link\n");
+		return 1;
+	}
+	ev = rig::node::evaluateGraph(graph);
+	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 60.f)) {
+		std::printf("node_smoke FAIL quantize eval=%f\n",
+					ev.outputs.empty() ? -1.f : ev.outputs[0]);
+		return 1;
+	}
+
+	rig::node::AudioBusValues bus;
+	bus.active = true;
+	bus.centroid = 0.4f;
+	bus.onset = 1.f;
+	bus.note = 69.f;
+	bus.pitchHz = 440.f;
+	bus.chroma = 0.75f;
+	bus.pitchConf = 0.9f;
+	rig::node::setAudioBus(bus);
+	graph = {};
+	const uint32_t au = rig::node::spawnCatalogNode(graph, "mod.audio", {0.f, 0.f});
+	const uint32_t ao = rig::node::spawnCatalogNode(graph, "float.out", {200.f, 0.f});
+	if (!rig::node::tryLinkByName(graph, au, "onset", ao, "in")) {
+		std::printf("node_smoke FAIL audio onset link\n");
+		return 1;
+	}
+	ctx.time = 0.f;
+	ctx.dt = 1.f / 60.f;
+	scratch.clear();
+	ctx.scratch = &scratch;
+	ev = rig::node::evaluateGraph(graph, ctx);
+	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 1.f)) {
+		std::printf("node_smoke FAIL audio onset=%f\n", ev.outputs.empty() ? -1.f : ev.outputs[0]);
+		return 1;
+	}
+
+	graph = {};
+	const uint32_t note = rig::node::spawnCatalogNode(graph, "mod.note", {0.f, 0.f});
+	const uint32_t nout = rig::node::spawnCatalogNode(graph, "float.out", {200.f, 0.f});
+	auto* nNote = graph.findNode(note);
+	if (!nNote) {
+		return 1;
+	}
+	rig::node::setParamFloat(*nNote, "scale", 1.f);
+	if (!rig::node::tryLinkByName(graph, note, "qmidi", nout, "in")) {
+		std::printf("node_smoke FAIL note link\n");
+		return 1;
+	}
+	ev = rig::node::evaluateGraph(graph);
+	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 69.f)) {
+		std::printf("node_smoke FAIL note qmidi=%f\n", ev.outputs.empty() ? -1.f : ev.outputs[0]);
+		return 1;
+	}
+
+	rig::node::TempoBusValues tempo;
+	tempo.active = true;
+	tempo.bpm = 120.f;
+	tempo.beatsPerBar = 4.f;
+	tempo.beat = 0.98;
+	rig::node::setTempoBus(tempo);
+	graph = {};
+	const uint32_t bt = rig::node::spawnCatalogNode(graph, "mod.beat", {0.f, 0.f});
+	const uint32_t bout = rig::node::spawnCatalogNode(graph, "float.out", {200.f, 0.f});
+	auto* nBt = graph.findNode(bt);
+	if (!nBt) {
+		return 1;
+	}
+	rig::node::setParamFloat(*nBt, "look", 0.04f);
+	if (!rig::node::tryLinkByName(graph, bt, "ahead", bout, "in")) {
+		std::printf("node_smoke FAIL beat ahead link\n");
+		return 1;
+	}
+	scratch.clear();
+	ctx.scratch = &scratch;
+	ev = rig::node::evaluateGraph(graph, ctx);
+	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 1.f)) {
+		std::printf("node_smoke FAIL beat ahead=%f\n", ev.outputs.empty() ? -1.f : ev.outputs[0]);
+		return 1;
+	}
+
+	std::printf("node_smoke ok audio / note / quantize / beat predict\n");
 	return 0;
 }

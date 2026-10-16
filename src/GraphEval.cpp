@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include "AudioBus.h"
 #include "MidiBus.h"
+#include "MusicQuantize.h"
 #include "NodeGraph.h"
 
 #ifndef M_PI
@@ -371,7 +372,31 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			const float offset = pf("offset", 0.f);
 			const float phase = pf("phase", 0.f);
 			const int wave = static_cast<int>(getParamFloat(node, "wave", 0.f));
-			setOutF(result, node, offset + amp * lfoWave(ctx.time * freq + phase, wave));
+			const bool oneShot = getParamFloat(node, "run", 0.f) >= 0.5f;
+			const float gate = inF(graph, result, node, "gate", 0.f);
+			float& prevGate = scratchSlot(ctx, id, 0, 0.f);
+			const bool trig = gate >= 0.5f && prevGate < 0.5f;
+			prevGate = gate;
+			float p;
+			if (oneShot) {
+				// Rest until a trigger, play one cycle at `freq`, rest again.
+				// u clamps at 1, which wraps to the cycle-start value.
+				float& u = scratchSlot(ctx, id, 1, 1.f);
+				if (trig) {
+					u = 0.f;
+				} else {
+					u = std::min(1.f, u + dt * std::max(0.f, freq));
+				}
+				p = u;
+			} else {
+				// Free-run; a trigger hard-syncs the cycle to "now".
+				float& anchor = scratchSlot(ctx, id, 2, 0.f);
+				if (trig) {
+					anchor = ctx.time;
+				}
+				p = (ctx.time - anchor) * freq;
+			}
+			setOutF(result, node, offset + amp * lfoWave(p + phase, wave));
 		} else if (t == "mod.noise") {
 			const float freq = pf("freq", 1.f);
 			const float amp = pf("amp", 1.f);
@@ -435,18 +460,58 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 				}
 			}
 			setOutF(result, node, std::clamp(level, 0.f, 1.f));
+		} else if (t == "mod.decay") {
+			// Trigger envelope: rising edges load the level, then it decays.
+			// Works with one-frame triggers (mod.audio onset, mod.beat edge),
+			// unlike the gate-level ADSR above.
+			const float gate = inF(graph, result, node, "gate", 0.f);
+			const float attack = std::max(0.001f, pf("attack", 0.005f));
+			const float decay = std::max(0.01f, pf("decay", 0.8f));
+			const float load = std::clamp(pf("load", 1.f), 0.f, 1.f);
+			const bool accumulate = pf("mode", 0.f) >= 0.5f;
+			float& level = scratchSlot(ctx, id, 0, 0.f);
+			float& target = scratchSlot(ctx, id, 1, 0.f);
+			float& prevGate = scratchSlot(ctx, id, 2, 0.f);
+			const bool trig = gate >= 0.5f && prevGate < 0.5f;
+			prevGate = gate;
+			if (trig) {
+				const float base = std::max(level, target);
+				target = accumulate ? std::min(1.f, base + load) : std::max(target, load);
+			}
+			if (level < target) {
+				level = std::min(target, level + dt / attack);
+			} else {
+				target = 0.f;
+				level *= std::exp(-dt / decay);
+				if (level < 1e-4f) {
+					level = 0.f;
+				}
+			}
+			setOutF(result, node, std::clamp(level, 0.f, 1.f));
 		} else if (t == "mod.beat") {
 			const TempoBusValues tempo = getTempoBus();
 			const float beats = std::max(0.01f, pf("beats", 1.f));
 			const float pw = std::clamp(pf("pulseW", 0.1f), 0.01f, 0.99f);
 			const float fallbackBpm = std::max(1.f, pf("bpm", 120.f));
+			const float look = std::max(0.f, pf("look", 0.04f));
 			// No clock source -> free-run from eval time at the BPM knob.
 			const double beat =
 				tempo.active ? tempo.beat : static_cast<double>(ctx.time) * fallbackBpm / 60.0;
 			const float bpb = tempo.active ? std::max(1.f, tempo.beatsPerBar) : 4.f;
+			const float bpmOut = tempo.active ? tempo.bpm : fallbackBpm;
 			const double cycle = beat / static_cast<double>(beats);
 			const double barCycle = beat / static_cast<double>(bpb);
 			const float phase = static_cast<float>(cycle - std::floor(cycle));
+			const float until = 1.f - phase;
+			const float beatSec = 60.f / std::max(1.f, bpmOut) * beats;
+			const float remainSec = until * beatSec;
+			const bool inAhead = look > 0.f && remainSec <= look;
+			float& prevPhase = scratchSlot(ctx, id, 0, phase);
+			float& wasAhead = scratchSlot(ctx, id, 1, 0.f);
+			const bool wrapped = phase + 0.5f < prevPhase;
+			const bool predict = inAhead && wasAhead < 0.5f;
+			prevPhase = phase;
+			wasAhead = inAhead ? 1.f : 0.f;
 			auto putOut = [&](const char* name, float v) {
 				if (const auto* p = pinByName(node, name, rigkit::ecs::NodePinKind::Out)) {
 					result.pinValue[pinKey(id, p->id)] = glm::vec4(v);
@@ -455,24 +520,78 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			putOut("phase", phase);
 			putOut("bar", static_cast<float>(barCycle - std::floor(barCycle)));
 			putOut("pulse", phase < pw ? 1.f : 0.f);
-			putOut("bpm", tempo.active ? tempo.bpm : fallbackBpm);
+			putOut("bpm", bpmOut);
+			putOut("until", until);
+			putOut("ahead", inAhead ? 1.f : 0.f);
+			putOut("edge", wrapped ? 1.f : 0.f);
+			putOut("predict", predict ? 1.f : 0.f);
+			putOut("lock", tempo.active ? (tempo.detected ? tempo.confidence : 1.f) : 0.f);
 		} else if (t == "mod.audio") {
 			const AudioBusValues bus = getAudioBus();
 			const float gain = pf("gain", 1.f);
 			const float attack = std::max(0.001f, pf("attack", 0.02f));
 			const float release = std::max(0.001f, pf("release", 0.25f));
-			auto follow = [&](const char* pinName, uint32_t slot, float target) {
-				float& s = scratchSlot(ctx, id, slot, 0.f);
-				const float tc = (target > s) ? attack : release;
-				s += (target - s) * (1.f - std::exp(-dt / tc));
+			auto follow = [&](const char* pinName, uint32_t slot, float target,
+							  bool smooth = true) {
+				float v = target;
+				if (smooth) {
+					float& s = scratchSlot(ctx, id, slot, 0.f);
+					const float tc = (target > s) ? attack : release;
+					s += (target - s) * (1.f - std::exp(-dt / tc));
+					v = s;
+				}
 				if (const auto* p = pinByName(node, pinName, rigkit::ecs::NodePinKind::Out)) {
-					result.pinValue[pinKey(id, p->id)] = glm::vec4(s * gain);
+					result.pinValue[pinKey(id, p->id)] = glm::vec4(v * gain);
 				}
 			};
-			follow("level", 0, bus.active ? bus.level : 0.f);
-			follow("bass", 1, bus.active ? bus.bass : 0.f);
-			follow("mid", 2, bus.active ? bus.mid : 0.f);
-			follow("treble", 3, bus.active ? bus.treble : 0.f);
+			const bool on = bus.active;
+			follow("level", 0, on ? bus.level : 0.f);
+			follow("bass", 1, on ? bus.bass : 0.f);
+			follow("mid", 2, on ? bus.mid : 0.f);
+			follow("treble", 3, on ? bus.treble : 0.f);
+			follow("peak", 4, on ? bus.peak : 0.f);
+			follow("centroid", 5, on ? bus.centroid : 0.f);
+			follow("spread", 6, on ? bus.spread : 0.f);
+			follow("rolloff", 7, on ? bus.rolloff : 0.f);
+			follow("flatness", 8, on ? bus.flatness : 0.f);
+			follow("flux", 9, on ? bus.flux : 0.f);
+			follow("onset", 10, on ? bus.onset : 0.f, false);
+			follow("hue", 11, on ? bus.hue : 0.f);
+			follow("warmth", 12, on ? bus.warmth : 0.f);
+		} else if (t == "mod.note") {
+			const AudioBusValues bus = getAudioBus();
+			const int root = static_cast<int>(pf("root", 0.f));
+			const auto scale = static_cast<MusicScale>(std::clamp(
+				static_cast<int>(pf("scale", 1.f)), 0, static_cast<int>(MusicScale::Count) - 1));
+			const float midi = bus.active ? bus.note : 0.f;
+			const int q = quantizeMidi(midi, root, scale);
+			auto putOut = [&](const char* name, float v) {
+				if (const auto* p = pinByName(node, name, rigkit::ecs::NodePinKind::Out)) {
+					result.pinValue[pinKey(id, p->id)] = glm::vec4(v);
+				}
+			};
+			putOut("hz", bus.active ? bus.pitchHz : 0.f);
+			putOut("midi", midi);
+			putOut("chroma", bus.active ? bus.chroma : 0.f);
+			putOut("conf", bus.active ? bus.pitchConf : 0.f);
+			putOut("qmidi", bus.active ? static_cast<float>(q) : 0.f);
+			putOut("q01", bus.active ? static_cast<float>(q) / 127.f : 0.f);
+		} else if (t == "mod.quantize") {
+			const int root = static_cast<int>(pf("root", 0.f));
+			const auto scale = static_cast<MusicScale>(std::clamp(
+				static_cast<int>(pf("scale", 1.f)), 0, static_cast<int>(MusicScale::Count) - 1));
+			const int inputMode = static_cast<int>(pf("input", 0.f));
+			const float raw = inF(graph, result, node, "in", 0.f);
+			const float midiIn = inputMode == 1 ? std::clamp(raw, 0.f, 1.f) * 127.f : raw;
+			const int q = quantizeMidi(midiIn, root, scale);
+			auto putOut = [&](const char* name, float v) {
+				if (const auto* p = pinByName(node, name, rigkit::ecs::NodePinKind::Out)) {
+					result.pinValue[pinKey(id, p->id)] = glm::vec4(v);
+				}
+			};
+			putOut("midi", static_cast<float>(q));
+			putOut("note01", static_cast<float>(q) / 127.f);
+			putOut("degree", scaleDegree01(q, root, scale));
 		} else if (t == "mod.cv") {
 			const CvBusValues cv = getCvBus();
 			const int ch = std::clamp(static_cast<int>(pf("channel", 1.f)) - 1, 0,

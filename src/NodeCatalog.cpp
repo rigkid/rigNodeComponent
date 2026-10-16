@@ -9,10 +9,17 @@ using Kind = rigkit::ecs::NodePinKind;
 const char* const kWaveLabels[] = {"Sine", "Triangle", "Saw", "Square"};
 const char* const kCompareLabels[] = {"<", "<=", ">", ">=", "==", "!="};
 const char* const kPortTypeLabels[] = {"Float", "Vec2", "Color"};
+const char* const kScaleLabels[] = {"Chromatic", "Major",	   "Minor",		"Harm. Minor",
+									"Dorian",	 "Mixolydian", "Penta Maj", "Penta Min",
+									"Blues",	 "Whole Tone"};
+const char* const kRootLabels[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+const char* const kQuantInLabels[] = {"MIDI", "Unit"};
+const char* const kDecayModeLabels[] = {"Retrigger", "Accumulate"};
+const char* const kLfoRunLabels[] = {"Loop", "One shot"};
 
 std::vector<CatalogEntry> makeCatalog() {
 	std::vector<CatalogEntry> c;
-	c.reserve(48);
+	c.reserve(64);
 
 	auto valueOut = []() -> std::vector<PinDesc> { return {{"out", Kind::Out, "float"}}; };
 	auto unary = []() -> std::vector<PinDesc> {
@@ -73,15 +80,20 @@ std::vector<CatalogEntry> makeCatalog() {
 	c.push_back({"float.smoothstep", "SmoothStep", "Maths", ternary(), {}});
 
 	// Modulators
+	// `gate` is optional: in Loop a rising edge hard-syncs the phase (cycle
+	// restarts "now"; unwired = free-run, as before). In One shot the LFO
+	// rests until a trigger, plays a single cycle at `freq`, then rests again
+	// at the cycle-start value. Feed it mod.audio `onset` or mod.beat `edge`.
 	c.push_back({"mod.lfo",
 				 "LFO",
 				 "Modulators",
-				 valueOut(),
+				 {{"gate", Kind::In, "float"}, {"out", Kind::Out, "float"}},
 				 {{"freq", "Frequency", 1.f, 0.01f, 60.f, 0.01f},
 				  {"amp", "Amplitude", 1.f, 0.f, 100.f, 0.01f},
 				  {"offset", "Offset", 0.f, -100.f, 100.f, 0.01f},
 				  {"phase", "Phase", 0.f, 0.f, 1.f, 0.01f},
-				  {"wave", "Wave", 0.f, 0.f, 3.f, 1.f, 1, kWaveLabels, "enum"}}});
+				  {"wave", "Wave", 0.f, 0.f, 3.f, 1.f, 1, kWaveLabels, "enum"},
+				  {"run", "Run", 0.f, 0.f, 1.f, 1.f, 1, kLfoRunLabels, "enum"}}});
 	c.push_back({"mod.noise",
 				 "Noise",
 				 "Modulators",
@@ -113,6 +125,19 @@ std::vector<CatalogEntry> makeCatalog() {
 				  {"decay", "Decay", 0.1f, 0.001f, 10.f, 0.001f},
 				  {"sustain", "Sustain", 0.7f, 0.f, 1.f, 0.01f},
 				  {"release", "Release", 0.2f, 0.001f, 10.f, 0.001f}}});
+	// Trigger-fired decay envelope (0..1 out, like the other modulators).
+	// Each rising edge on `gate` loads the level - Retrigger jumps back to
+	// `Load`, Accumulate stacks `Load` per hit (clamped at 1) so dense hits
+	// pile up - then it falls away over `Decay` seconds. Built for one-frame
+	// triggers: mod.audio `onset`, mod.beat `edge` / `pulse`, midi.in `pulse`.
+	c.push_back({"mod.decay",
+				 "Decay",
+				 "Modulators",
+				 {{"gate", Kind::In, "float"}, {"out", Kind::Out, "float"}},
+				 {{"attack", "Attack", 0.005f, 0.001f, 2.f, 0.001f},
+				  {"decay", "Decay", 0.8f, 0.01f, 30.f, 0.01f},
+				  {"load", "Load", 1.f, 0.05f, 1.f, 0.01f},
+				  {"mode", "Mode", 0.f, 0.f, 1.f, 1.f, 1, kDecayModeLabels, "enum"}}});
 	// Live audio input (see AudioBus.h - a capture pack publishes the values).
 	c.push_back({"mod.audio",
 				 "Audio",
@@ -120,23 +145,60 @@ std::vector<CatalogEntry> makeCatalog() {
 				 {{"level", Kind::Out, "float"},
 				  {"bass", Kind::Out, "float"},
 				  {"mid", Kind::Out, "float"},
-				  {"treble", Kind::Out, "float"}},
+				  {"treble", Kind::Out, "float"},
+				  {"peak", Kind::Out, "float"},
+				  {"centroid", Kind::Out, "float"},
+				  {"spread", Kind::Out, "float"},
+				  {"rolloff", Kind::Out, "float"},
+				  {"flatness", Kind::Out, "float"},
+				  {"flux", Kind::Out, "float"},
+				  {"onset", Kind::Out, "float"},
+				  {"hue", Kind::Out, "float"},
+				  {"warmth", Kind::Out, "float"}},
 				 {{"gain", "Gain", 1.f, 0.f, 20.f, 0.01f},
 				  {"attack", "Attack", 0.02f, 0.001f, 1.f, 0.001f},
 				  {"release", "Release", 0.25f, 0.001f, 2.f, 0.001f}}});
 	// Shared musical clock (see AudioBus.h TempoBusValues - the host publishes
-	// tap tempo / MIDI clock / Link). Free-runs at the BPM param when no clock
-	// source is active, so patches animate everywhere.
+	// tap tempo / MIDI clock / Link / audio beat detection). Free-runs at the
+	// BPM param when no clock source is active, so patches animate everywhere.
+	// `until` / `ahead` / `predict` fire early so visuals land on the beat.
 	c.push_back({"mod.beat",
 				 "Beat",
 				 "Modulators",
 				 {{"phase", Kind::Out, "float"},
 				  {"bar", Kind::Out, "float"},
 				  {"pulse", Kind::Out, "float"},
-				  {"bpm", Kind::Out, "float"}},
+				  {"bpm", Kind::Out, "float"},
+				  {"until", Kind::Out, "float"},
+				  {"ahead", Kind::Out, "float"},
+				  {"edge", Kind::Out, "float"},
+				  {"predict", Kind::Out, "float"},
+				  {"lock", Kind::Out, "float"}},
 				 {{"beats", "Cycle beats", 1.f, 0.0625f, 64.f, 0.01f},
 				  {"pulseW", "Pulse width", 0.1f, 0.01f, 0.9f, 0.01f},
-				  {"bpm", "BPM (no clock)", 120.f, 20.f, 300.f, 0.1f}}});
+				  {"bpm", "BPM (no clock)", 120.f, 20.f, 300.f, 0.1f},
+				  {"look", "Lookahead s", 0.04f, 0.f, 0.25f, 0.001f}}});
+	c.push_back({"mod.note",
+				 "Note",
+				 "Modulators",
+				 {{"hz", Kind::Out, "float"},
+				  {"midi", Kind::Out, "float"},
+				  {"chroma", Kind::Out, "float"},
+				  {"conf", Kind::Out, "float"},
+				  {"qmidi", Kind::Out, "float"},
+				  {"q01", Kind::Out, "float"}},
+				 {{"root", "Root", 0.f, 0.f, 11.f, 1.f, 1, kRootLabels, "enum"},
+				  {"scale", "Scale", 1.f, 0.f, 9.f, 1.f, 1, kScaleLabels, "enum"}}});
+	c.push_back({"mod.quantize",
+				 "Quantize",
+				 "Modulators",
+				 {{"in", Kind::In, "float"},
+				  {"midi", Kind::Out, "float"},
+				  {"note01", Kind::Out, "float"},
+				  {"degree", Kind::Out, "float"}},
+				 {{"root", "Root", 0.f, 0.f, 11.f, 1.f, 1, kRootLabels, "enum"},
+				  {"scale", "Scale", 1.f, 0.f, 9.f, 1.f, 1, kScaleLabels, "enum"},
+				  {"input", "Input", 0.f, 0.f, 1.f, 1.f, 1, kQuantInLabels, "enum"}}});
 	// Live control voltage from a DC-coupled interface (see AudioBus.h CvBusValues).
 	// One node = one channel, modular style. Raw bus value is -1..1 (±10V full
 	// scale on an ES-8/9); out = raw * scale + offset, slewed over `slew` seconds.
