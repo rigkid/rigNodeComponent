@@ -1,5 +1,6 @@
 #include "AudioBus.h"
 #include "CNodeGraph.h"
+#include "CompositeLibrary.h"
 #include "GraphEval.h"
 #include "MusicQuantize.h"
 #include "NodeCatalog.h"
@@ -7,12 +8,285 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace {
 
 bool nearEq(float a, float b, float eps = 1e-3f) {
 	return std::fabs(a - b) <= eps;
+}
+
+bool idsFresh(const rigkit::ecs::NodeGraphData& g, uint32_t before) {
+	for (const auto& n : g.nodes) {
+		if (n.id < before) {
+			return false;
+		}
+		for (const auto& p : n.pins) {
+			if (p.id < before) {
+				return false;
+			}
+		}
+		if (n.nested && !idsFresh(*n.nested, before)) {
+			return false;
+		}
+	}
+	for (const auto& l : g.links) {
+		if (l.id < before) {
+			return false;
+		}
+	}
+	return true;
+}
+
+float evalGroupOut(rigkit::ecs::NodeGraphData& g, uint32_t gid) {
+	auto* node = g.findNode(gid);
+	if (!node) {
+		return -1.f;
+	}
+	uint32_t outPin = 0;
+	for (const auto& p : node->pins) {
+		if (p.kind == rigkit::ecs::NodePinKind::Out) {
+			outPin = p.id;
+			break;
+		}
+	}
+	if (outPin == 0) {
+		return -1.f;
+	}
+	const uint32_t fout = rig::node::spawnCatalogNode(g, "float.out", {400.f, 40.f});
+	auto* out = g.findNode(fout);
+	if (!out || out->pins.empty() || !rig::node::tryLink(g, gid, outPin, fout, out->pins[0].id)) {
+		return -1.f;
+	}
+	const auto ev = rig::node::evaluateGraph(g);
+	if (!ev.ok || ev.outputs.empty()) {
+		return -1.f;
+	}
+	return ev.outputs[0];
+}
+
+int compositeSmoke() {
+	const std::filesystem::path tmp =
+		std::filesystem::temp_directory_path() / "rig-node-composite-smoke";
+	std::error_code ec;
+	std::filesystem::remove_all(tmp, ec);
+	std::filesystem::create_directories(tmp, ec);
+	struct Clean {
+		std::filesystem::path path;
+		~Clean() {
+			std::error_code e;
+			std::filesystem::remove_all(path, e);
+		}
+	} clean{tmp};
+
+	rigkit::ecs::CNodeGraph graph;
+	const uint32_t ga = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 0.f});
+	const uint32_t gb = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 80.f});
+	const uint32_t gadd = rig::node::spawnCatalogNode(graph, "float.add", {200.f, 40.f});
+	auto* nga = graph.findNode(ga);
+	auto* ngb = graph.findNode(gb);
+	if (!nga || !ngb) {
+		std::printf("node_smoke FAIL composite prep\n");
+		return 1;
+	}
+	rig::node::setParamFloat(*nga, "value", 2.f);
+	rig::node::setParamFloat(*ngb, "value", 5.f);
+	if (!rig::node::tryLinkByName(graph, ga, "out", gadd, "a") ||
+		!rig::node::tryLinkByName(graph, gb, "out", gadd, "b")) {
+		std::printf("node_smoke FAIL composite prep link\n");
+		return 1;
+	}
+	const uint32_t gid = rig::node::createGroup(graph, {ga, gb, gadd}, {100.f, 40.f}, "Sum");
+	auto* gnode = graph.findNode(gid);
+	if (!gnode || !gnode->nested) {
+		std::printf("node_smoke FAIL composite group\n");
+		return 1;
+	}
+	if (rig::node::createEmptyGroup(*gnode->nested, {0.f, 0.f}, "Inner") == 0) {
+		std::printf("node_smoke FAIL composite inner group\n");
+		return 1;
+	}
+	gnode = graph.findNode(gid);
+
+	std::string err;
+	rigkit::ecs::GraphNode plain;
+	plain.typeId = "float.value";
+	if (rig::node::saveComposite(plain, tmp / "nope.node.json", err)) {
+		std::printf("node_smoke FAIL composite saved a non-group\n");
+		return 1;
+	}
+
+	const auto path = tmp / "sum.node.json";
+	if (!gnode || !rig::node::saveComposite(*gnode, path, err)) {
+		std::printf("node_smoke FAIL composite save %s\n", err.c_str());
+		return 1;
+	}
+	const auto again = rig::node::uniqueCompositePath(tmp, "Sum");
+	if (again.filename() != "sum-2.node.json") {
+		std::printf("node_smoke FAIL composite unique name %s\n", again.filename().string().c_str());
+		return 1;
+	}
+
+	rig::node::CompositeFile loaded;
+	if (!rig::node::loadComposite(path, loaded, err) || loaded.name != "Sum" ||
+		!loaded.node.isGroup()) {
+		std::printf("node_smoke FAIL composite load %s\n", err.c_str());
+		return 1;
+	}
+	if (rig::node::getParamString(loaded.node, rig::node::kCompositeLibraryParam) != "") {
+		std::printf("node_smoke FAIL composite file kept the library path\n");
+		return 1;
+	}
+
+	rigkit::ecs::CNodeGraph dest;
+	rig::node::spawnCatalogNode(dest, "float.value", {0.f, 0.f});
+	const uint32_t before = dest.nextId;
+	const uint32_t spawned =
+		rig::node::spawnComposite(dest, loaded.node, {10.f, 20.f}, path.string(), err);
+	auto* copy = dest.findNode(spawned);
+	if (spawned == 0 || !copy || !copy->nested || copy->id < before ||
+		!idsFresh(*copy->nested, before)) {
+		std::printf("node_smoke FAIL composite spawn remap id=%u err=%s\n", spawned, err.c_str());
+		return 1;
+	}
+	if (rig::node::getParamString(*copy, rig::node::kCompositeLibraryParam) != path.string()) {
+		std::printf("node_smoke FAIL composite library param\n");
+		return 1;
+	}
+	for (const auto& pub : copy->publishes) {
+		bool outer = false;
+		for (const auto& p : copy->pins) {
+			if (p.id == pub.pin) {
+				outer = true;
+			}
+		}
+		if (!outer || copy->nested->findPin(pub.innerNode, pub.innerPin) == nullptr) {
+			std::printf("node_smoke FAIL composite publish remap\n");
+			return 1;
+		}
+	}
+	if (!nearEq(evalGroupOut(dest, spawned), 7.f)) {
+		std::printf("node_smoke FAIL composite eval\n");
+		return 1;
+	}
+
+	const uint32_t spawned2 =
+		rig::node::spawnComposite(dest, loaded.node, {10.f, 120.f}, path.string(), err);
+	if (spawned2 == 0 || spawned2 == spawned) {
+		std::printf("node_smoke FAIL composite second spawn\n");
+		return 1;
+	}
+
+	rigkit::ecs::CNodeGraph other;
+	const uint32_t otherId =
+		rig::node::spawnComposite(other, loaded.node, {0.f, 0.f}, path.string(), err);
+	if (otherId == 0 || !nearEq(evalGroupOut(other, otherId), 7.f)) {
+		std::printf("node_smoke FAIL composite copy baseline\n");
+		return 1;
+	}
+
+	copy = dest.findNode(spawned);
+	bool mutated = false;
+	if (copy && copy->nested) {
+		for (auto& n : copy->nested->nodes) {
+			if (n.typeId == "float.value" &&
+				nearEq(rig::node::getParamFloat(n, "value"), 5.f)) {
+				rig::node::setParamFloat(n, "value", 9.f);
+				mutated = true;
+			}
+		}
+	}
+	if (!mutated || !nearEq(evalGroupOut(dest, spawned), 11.f)) {
+		std::printf("node_smoke FAIL composite copy edit\n");
+		return 1;
+	}
+	if (!nearEq(evalGroupOut(other, otherId), 7.f)) {
+		std::printf("node_smoke FAIL composite copy leaked\n");
+		return 1;
+	}
+
+	copy = dest.findNode(spawned);
+	if (!copy || !rig::node::saveComposite(*copy, path, err)) {
+		std::printf("node_smoke FAIL composite update %s\n", err.c_str());
+		return 1;
+	}
+	rig::node::CompositeFile updated;
+	if (!rig::node::loadComposite(path, updated, err)) {
+		std::printf("node_smoke FAIL composite reload %s\n", err.c_str());
+		return 1;
+	}
+	rigkit::ecs::CNodeGraph after;
+	const uint32_t updatedId =
+		rig::node::spawnComposite(after, updated.node, {0.f, 0.f}, path.string(), err);
+	if (updatedId == 0 || !nearEq(evalGroupOut(after, updatedId), 11.f)) {
+		std::printf("node_smoke FAIL composite updated eval\n");
+		return 1;
+	}
+
+	{
+		std::ofstream bad{tmp / "bad.node.json", std::ios::binary};
+		bad << "{ \"format\": 99, \"name\": \"Nope\", \"node\": {} }\n";
+	}
+	rig::node::CompositeFile rejected;
+	if (rig::node::loadComposite(tmp / "bad.node.json", rejected, err) ||
+		err.find("not supported") == std::string::npos) {
+		std::printf("node_smoke FAIL composite format reject (%s)\n", err.c_str());
+		return 1;
+	}
+
+	const auto listed = rig::node::listComposites(tmp);
+	if (listed.size() != 1 || listed[0].name != "Sum") {
+		std::printf("node_smoke FAIL composite list %zu\n", listed.size());
+		return 1;
+	}
+
+	rigkit::ecs::CNodeGraph lifted;
+	rig::node::spawnCatalogNode(lifted, "float.value", {0.f, 0.f});
+	const uint32_t liftId =
+		rig::node::spawnComposite(lifted, loaded.node, {0.f, 0.f}, path.string(), err);
+	if (liftId == 0 || !rig::node::ungroup(lifted, liftId)) {
+		std::printf("node_smoke FAIL composite ungroup\n");
+		return 1;
+	}
+	std::unordered_set<uint32_t> seen;
+	for (const auto& n : lifted.nodes) {
+		if (!seen.insert(n.id).second) {
+			std::printf("node_smoke FAIL composite ungroup duplicate id %u\n", n.id);
+			return 1;
+		}
+	}
+	uint32_t addId = 0;
+	uint32_t addOut = 0;
+	for (const auto& n : lifted.nodes) {
+		if (n.typeId != "float.add") {
+			continue;
+		}
+		addId = n.id;
+		for (const auto& p : n.pins) {
+			if (p.name == "out") {
+				addOut = p.id;
+			}
+		}
+	}
+	const uint32_t fout = rig::node::spawnCatalogNode(lifted, "float.out", {400.f, 0.f});
+	auto* out = lifted.findNode(fout);
+	if (addId == 0 || addOut == 0 || !out ||
+		!rig::node::tryLink(lifted, addId, addOut, fout, out->pins[0].id)) {
+		std::printf("node_smoke FAIL composite ungroup link\n");
+		return 1;
+	}
+	const auto ev = rig::node::evaluateGraph(lifted);
+	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 7.f)) {
+		std::printf("node_smoke FAIL composite ungroup eval=%f\n",
+					ev.outputs.empty() ? -1.f : ev.outputs[0]);
+		return 1;
+	}
+
+	std::printf("node_smoke ok composite library\n");
+	return 0;
 }
 
 } // namespace
@@ -347,6 +621,10 @@ int main() {
 	}
 
 	std::printf("node_smoke ok groups + nested inject + dive + ungroup + export nodes\n");
+
+	if (compositeSmoke() != 0) {
+		return 1;
+	}
 
 	if (rig::node::quantizeMidi(62.f, 0, rig::node::MusicScale::Major) != 62 ||
 		rig::node::quantizeMidi(61.f, 0, rig::node::MusicScale::Major) != 60 ||

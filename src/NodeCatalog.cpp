@@ -154,7 +154,9 @@ std::vector<CatalogEntry> makeCatalog() {
 				  {"flux", Kind::Out, "float"},
 				  {"onset", Kind::Out, "float"},
 				  {"hue", Kind::Out, "float"},
-				  {"warmth", Kind::Out, "float"}},
+				  {"warmth", Kind::Out, "float"},
+				  {"color", Kind::Out, "vec4"},
+				  {"temperature", Kind::Out, "float"}},
 				 {{"gain", "Gain", 1.f, 0.f, 20.f, 0.01f},
 				  {"attack", "Attack", 0.02f, 0.001f, 1.f, 0.001f},
 				  {"release", "Release", 0.25f, 0.001f, 2.f, 0.001f}}});
@@ -178,6 +180,11 @@ std::vector<CatalogEntry> makeCatalog() {
 				  {"pulseW", "Pulse width", 0.1f, 0.01f, 0.9f, 0.01f},
 				  {"bpm", "BPM (no clock)", 120.f, 20.f, 300.f, 0.1f},
 				  {"look", "Lookahead s", 0.04f, 0.f, 0.25f, 0.001f}}});
+	c.push_back({"mod.picture",
+				 "Picture",
+				 "Modulators",
+				 {{"color", Kind::Out, "vec4"}, {"temperature", Kind::Out, "float"}},
+				 {}});
 	c.push_back({"mod.note",
 				 "Note",
 				 "Modulators",

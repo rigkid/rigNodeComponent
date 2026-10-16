@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PictureFeatures.h"
+
 namespace rig {
 namespace node {
 
@@ -25,10 +27,15 @@ struct AudioBusValues {
 	float flux = 0.f;	  ///< 0..1 spectral change (onset energy)
 	float hue = 0.f;	  ///< 0..1 colour from centroid (warm to cool)
 	float warmth = 0.f;	  ///< 0..1 bass vs treble
-	float onset = 0.f;	  ///< 1 on a detected attack this frame
-	float pitchHz = 0.f;  ///< Detected fundamental
-	float note = 0.f;	  ///< Fractional MIDI note
-	float chroma = 0.f;	  ///< Pitch class 0..1 (C = 0)
+	float colorR = 0.f;	  ///< Shared feedback rgba from hue + energy
+	float colorG = 0.f;
+	float colorB = 0.f;
+	float colorA = 1.f;
+	float temperature = 0.5f; ///< Shared name: same as warmth (0 cold, 1 warm)
+	float onset = 0.f;		  ///< 1 on a detected attack this frame
+	float pitchHz = 0.f;	  ///< Detected fundamental
+	float note = 0.f;		  ///< Fractional MIDI note
+	float chroma = 0.f;		  ///< Pitch class 0..1 (C = 0)
 	float pitchConf = 0.f;
 	bool active = false;
 };
@@ -87,17 +94,41 @@ struct TempoBusValues {
 	float confidence = 0.f;
 };
 
+/** @brief Live picture analysis (dominant color + temperature). */
+struct PictureBusValues {
+	float colorR = 0.f;
+	float colorG = 0.f;
+	float colorB = 0.f;
+	float colorA = 1.f;
+	float temperature = 0.5f; ///< 0 = cold, 1 = warm
+	bool active = false;
+};
+
 /** @brief Publish this frame's audio analysis (main thread, once per frame). */
 void setAudioBus(const AudioBusValues& v);
 void setAudioSpectrum(const AudioSpectrum& s);
 void setCvBus(const CvBusValues& v);
 void setTempoBus(const TempoBusValues& v);
+void setPictureBus(const PictureBusValues& v);
+
+/** @brief Publish a picture hop (main thread). */
+inline void publishPictureFrame(const rigkit::picture::PictureFeatureFrame& f) {
+	PictureBusValues v;
+	v.colorR = f.colorR;
+	v.colorG = f.colorG;
+	v.colorB = f.colorB;
+	v.colorA = f.colorA;
+	v.temperature = f.temperature;
+	v.active = true;
+	setPictureBus(v);
+}
 
 /** @brief Last published analysis (all zeros when no publisher runs). */
 AudioBusValues getAudioBus();
 const AudioSpectrum& getAudioSpectrum();
 CvBusValues getCvBus();
 TempoBusValues getTempoBus();
+PictureBusValues getPictureBus();
 
 } // namespace node
 } // namespace rig

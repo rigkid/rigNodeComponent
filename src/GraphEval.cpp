@@ -558,6 +558,21 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			follow("onset", 10, on ? bus.onset : 0.f, false);
 			follow("hue", 11, on ? bus.hue : 0.f);
 			follow("warmth", 12, on ? bus.warmth : 0.f);
+			follow("temperature", 13, on ? bus.temperature : 0.5f);
+			if (const auto* p = pinByName(node, "color", rigkit::ecs::NodePinKind::Out)) {
+				result.pinValue[pinKey(id, p->id)] =
+					on ? glm::vec4(bus.colorR, bus.colorG, bus.colorB, bus.colorA) : glm::vec4(0.f);
+			}
+		} else if (t == "mod.picture") {
+			const PictureBusValues pic = getPictureBus();
+			if (const auto* p = pinByName(node, "color", rigkit::ecs::NodePinKind::Out)) {
+				result.pinValue[pinKey(id, p->id)] =
+					pic.active ? glm::vec4(pic.colorR, pic.colorG, pic.colorB, pic.colorA)
+							   : glm::vec4(0.f);
+			}
+			if (const auto* p = pinByName(node, "temperature", rigkit::ecs::NodePinKind::Out)) {
+				result.pinValue[pinKey(id, p->id)] = glm::vec4(pic.active ? pic.temperature : 0.5f);
+			}
 		} else if (t == "mod.note") {
 			const AudioBusValues bus = getAudioBus();
 			const int root = static_cast<int>(pf("root", 0.f));

@@ -226,6 +226,14 @@ bool deserializeNodeGraph(entt::registry& reg, entt::entity e, const ordered_jso
 
 } // namespace
 
+project::ordered_json serializeNodeJson(const ecs::GraphNode& node) {
+	return serializeNode(node);
+}
+
+ecs::GraphNode deserializeNodeJson(const project::ordered_json& json) {
+	return deserializeNode(json);
+}
+
 void registerProjectSerializers(project::ComponentSerializerRegistry& registry) {
 	addSerializer<ecs::CNodeGraph>(registry, "NodeGraph", "rig.node.graph", serializeNodeGraph,
 								   deserializeNodeGraph);

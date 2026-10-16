@@ -46,6 +46,8 @@ add_library(${PACK_NAME} STATIC
 	src/NodeCatalog.h
 	src/NodeSerializers.cpp
 	src/NodeSerializers.h
+	src/CompositeLibrary.cpp
+	src/CompositeLibrary.h
 	src/SGraphEval.cpp
 	src/SGraphEval.h
 )

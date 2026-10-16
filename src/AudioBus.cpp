@@ -8,6 +8,7 @@ AudioBusValues g_bus;
 AudioSpectrum g_spectrum;
 CvBusValues g_cv;
 TempoBusValues g_tempo;
+PictureBusValues g_picture;
 
 } // namespace
 
@@ -27,6 +28,10 @@ void setTempoBus(const TempoBusValues& v) {
 	g_tempo = v;
 }
 
+void setPictureBus(const PictureBusValues& v) {
+	g_picture = v;
+}
+
 AudioBusValues getAudioBus() {
 	return g_bus;
 }
@@ -41,6 +46,10 @@ CvBusValues getCvBus() {
 
 TempoBusValues getTempoBus() {
 	return g_tempo;
+}
+
+PictureBusValues getPictureBus() {
+	return g_picture;
 }
 
 } // namespace node
