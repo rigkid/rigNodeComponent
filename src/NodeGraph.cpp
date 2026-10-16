@@ -87,8 +87,12 @@ uint32_t addNode(rigkit::ecs::NodeGraphData& graph, std::string_view typeId, std
 	return id;
 }
 
-bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin,
-			 uint32_t toNode, uint32_t toPin) {
+bool pinsCompatible(std::string_view fromType, std::string_view toType) {
+	return typesCompatible(fromType, toType);
+}
+
+bool canLink(const rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin,
+			 uint32_t toNode, uint32_t toPin, uint32_t ignoreLinkId) {
 	if (fromNode == toNode) {
 		return false;
 	}
@@ -104,6 +108,9 @@ bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t from
 		return false;
 	}
 	for (const auto& l : graph.links) {
+		if (l.id == ignoreLinkId) {
+			continue;
+		}
 		if (l.toNode == toNode && l.toPin == toPin) {
 			return false;
 		}
@@ -112,6 +119,14 @@ bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t from
 			return false;
 		}
 	}
+	return true;
+}
+
+bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin,
+			 uint32_t toNode, uint32_t toPin) {
+	if (!canLink(graph, fromNode, fromPin, toNode, toPin)) {
+		return false;
+	}
 	rigkit::ecs::GraphLink link;
 	link.id = graph.allocId();
 	link.fromNode = fromNode;
@@ -119,6 +134,26 @@ bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t from
 	link.toNode = toNode;
 	link.toPin = toPin;
 	graph.links.push_back(link);
+	return true;
+}
+
+bool relink(rigkit::ecs::NodeGraphData& graph, uint32_t linkId, uint32_t fromNode, uint32_t fromPin,
+			uint32_t toNode, uint32_t toPin) {
+	auto* link = graph.findLink(linkId);
+	if (!link) {
+		return false;
+	}
+	if (link->fromNode == fromNode && link->fromPin == fromPin && link->toNode == toNode &&
+		link->toPin == toPin) {
+		return true;
+	}
+	if (!canLink(graph, fromNode, fromPin, toNode, toPin, linkId)) {
+		return false;
+	}
+	link->fromNode = fromNode;
+	link->fromPin = fromPin;
+	link->toNode = toNode;
+	link->toPin = toPin;
 	return true;
 }
 

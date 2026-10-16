@@ -34,6 +34,22 @@ bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t from
 bool tryLinkByName(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, std::string_view fromPin,
 				   uint32_t toNode, std::string_view toPin);
 
+/**
+ * @brief True when the pin pair would accept `tryLink` (optionally ignoring one existing row).
+ * @param ignoreLinkId Skip this link when checking a busy input (0 = none). Used to rewire.
+ */
+bool canLink(const rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin,
+			 uint32_t toNode, uint32_t toPin, uint32_t ignoreLinkId = 0);
+
+/**
+ * @brief Move an existing link onto a new pin pair. False leaves the row unchanged.
+ */
+bool relink(rigkit::ecs::NodeGraphData& graph, uint32_t linkId, uint32_t fromNode, uint32_t fromPin,
+			uint32_t toNode, uint32_t toPin);
+
+/** @brief Same type rule as `tryLink` (exact match, or float / vec2 / vec4 coercion). */
+bool pinsCompatible(std::string_view fromType, std::string_view toType);
+
 void removeNode(rigkit::ecs::NodeGraphData& graph, uint32_t nodeId);
 void removeLink(rigkit::ecs::NodeGraphData& graph, uint32_t linkId);
 
