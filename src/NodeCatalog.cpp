@@ -160,8 +160,7 @@ std::vector<CatalogEntry> makeCatalog() {
 				  {"vel", Kind::Out, "float"},
 				  {"pulse", Kind::Out, "float"},
 				  {"cc", Kind::Out, "float"}},
-				 {{"ch", "Channel", 0.f, 0.f, 16.f, 1.f},
-				  {"ccNum", "CC", 1.f, 0.f, 127.f, 1.f}}});
+				 {{"ch", "Channel", 0.f, 0.f, 16.f, 1.f}, {"ccNum", "CC", 1.f, 0.f, 127.f, 1.f}}});
 	c.push_back({"midi.note",
 				 "MIDI Note",
 				 "MIDI",
@@ -173,8 +172,7 @@ std::vector<CatalogEntry> makeCatalog() {
 				 "MIDI CC",
 				 "MIDI",
 				 {{"value", Kind::In, "float"}, {"out", Kind::Out, "float"}},
-				 {{"cc", "CC", 1.f, 0.f, 127.f, 1.f},
-				  {"ch", "Channel", 1.f, 1.f, 16.f, 1.f}}});
+				 {{"cc", "CC", 1.f, 0.f, 127.f, 1.f}, {"ch", "Channel", 1.f, 1.f, 16.f, 1.f}}});
 
 	// Logic
 	c.push_back({"logic.compare",

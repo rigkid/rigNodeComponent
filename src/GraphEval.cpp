@@ -441,9 +441,8 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			const float pw = std::clamp(pf("pulseW", 0.1f), 0.01f, 0.99f);
 			const float fallbackBpm = std::max(1.f, pf("bpm", 120.f));
 			// No clock source -> free-run from eval time at the BPM knob.
-			const double beat = tempo.active
-									? tempo.beat
-									: static_cast<double>(ctx.time) * fallbackBpm / 60.0;
+			const double beat =
+				tempo.active ? tempo.beat : static_cast<double>(ctx.time) * fallbackBpm / 60.0;
 			const float bpb = tempo.active ? std::max(1.f, tempo.beatsPerBar) : 4.f;
 			const double cycle = beat / static_cast<double>(beats);
 			const double barCycle = beat / static_cast<double>(bpb);
@@ -530,8 +529,8 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 				result.pinValue[pinKey(id, p->id)] = glm::vec4(on && !was ? 1.f : 0.f);
 			}
 		} else if (t == "midi.cc") {
-			const float value = std::clamp(inF(graph, result, node, "value", pf("value", 0.f)), 0.f,
-										   1.f);
+			const float value =
+				std::clamp(inF(graph, result, node, "value", pf("value", 0.f)), 0.f, 1.f);
 			const int cc = std::clamp(static_cast<int>(pf("cc", 1.f)), 0, 127);
 			const int ch = std::clamp(static_cast<int>(pf("ch", 1.f)), 1, 16);
 			const int sent = static_cast<int>(std::lround(value * 127.f));
