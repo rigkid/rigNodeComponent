@@ -14,7 +14,7 @@ namespace rig {
 namespace node {
 namespace {
 
-using project::ordered_json;
+using rigkit::project::ordered_json;
 
 void stripLibraryParam(rigkit::ecs::GraphNode& node) {
 	auto& params = node.params;
