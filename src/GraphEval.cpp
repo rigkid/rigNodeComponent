@@ -161,6 +161,28 @@ float& scratchSlot(EvalContext& ctx, uint32_t nodeId, uint32_t slot, float init)
 	return it->second;
 }
 
+double tempoBeatAt(const TempoBusValues& tempo, float time) {
+	if (tempo.active) {
+		return tempo.beat;
+	}
+	const float bpm = tempo.bpm > 1.f ? tempo.bpm : 120.f;
+	return static_cast<double>(time) * static_cast<double>(bpm) / 60.0;
+}
+
+/// Beat advance since the previous call. Whole and fraction are stored apart
+/// so a long set does not eat the fractional beat out of a float.
+float tempoBeatDelta(EvalContext& ctx, uint32_t nodeId, double beatNow) {
+	const double whole = std::floor(beatNow);
+	const double frac = beatNow - whole;
+	float& prevWhole = scratchSlot(ctx, nodeId, 3, static_cast<float>(whole));
+	float& prevFrac = scratchSlot(ctx, nodeId, 4, static_cast<float>(frac));
+	const double d =
+		(whole - static_cast<double>(prevWhole)) + (frac - static_cast<double>(prevFrac));
+	prevWhole = static_cast<float>(whole);
+	prevFrac = static_cast<float>(frac);
+	return d > 0.0 ? static_cast<float>(d) : 0.f;
+}
+
 } // namespace
 
 EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalContext& ctxIn,
@@ -373,6 +395,9 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 			const float phase = pf("phase", 0.f);
 			const int wave = static_cast<int>(getParamFloat(node, "wave", 0.f));
 			const bool oneShot = getParamFloat(node, "run", 0.f) >= 0.5f;
+			// BPM: Frequency is cycles per beat on the tempo bus, phase-locked
+			// so every synced LFO of the same rate shares the downbeat.
+			const bool bpmSync = getParamFloat(node, "sync", 0.f) >= 0.5f;
 			const float gate = inF(graph, result, node, "gate", 0.f);
 			float& prevGate = scratchSlot(ctx, id, 0, 0.f);
 			const bool trig = gate >= 0.5f && prevGate < 0.5f;
@@ -382,14 +407,33 @@ EvalResult evaluateGraph(const rigkit::ecs::NodeGraphData& graph, const EvalCont
 				// Rest until a trigger, play one cycle at `freq`, rest again.
 				// u clamps at 1, which wraps to the cycle-start value.
 				float& u = scratchSlot(ctx, id, 1, 1.f);
-				if (trig) {
+				if (bpmSync) {
+					const float stepped =
+						tempoBeatDelta(ctx, id, tempoBeatAt(getTempoBus(), ctx.time)) *
+						std::max(0.f, freq);
+					u = trig ? 0.f : std::min(1.f, u + stepped);
+				} else if (trig) {
 					u = 0.f;
 				} else {
 					u = std::min(1.f, u + dt * std::max(0.f, freq));
 				}
 				p = u;
+			} else if (bpmSync) {
+				const double cycles =
+					tempoBeatAt(getTempoBus(), ctx.time) * static_cast<double>(freq);
+				const double fract = cycles - std::floor(cycles);
+				// A gate restarts the cycle; otherwise the wave sits on the beat.
+				float& shift = scratchSlot(ctx, id, 2, 0.f);
+				if (trig) {
+					shift = static_cast<float>(fract);
+				}
+				double p01 = fract - static_cast<double>(shift);
+				if (p01 < 0.0) {
+					p01 += 1.0;
+				}
+				p = static_cast<float>(p01);
 			} else {
-				// Free-run; a trigger hard-syncs the cycle to "now".
+				// Free-run in Hz; a trigger hard-syncs the cycle to "now".
 				float& anchor = scratchSlot(ctx, id, 2, 0.f);
 				if (trig) {
 					anchor = ctx.time;

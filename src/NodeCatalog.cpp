@@ -84,6 +84,9 @@ std::vector<CatalogEntry> makeCatalog() {
 	// restarts "now"; unwired = free-run, as before). In One shot the LFO
 	// rests until a trigger, plays a single cycle at `freq`, then rests again
 	// at the cycle-start value. Feed it mod.audio `onset` or mod.beat `edge`.
+	// `sync` (BPM) re-reads Frequency as cycles per beat on the host tempo
+	// bus and phase-locks the loop to that clock. 1 is one wave per beat,
+	// 0.25 is one wave per bar of 4. Off keeps Frequency in Hz.
 	c.push_back({"mod.lfo",
 				 "LFO",
 				 "Modulators",
@@ -93,7 +96,8 @@ std::vector<CatalogEntry> makeCatalog() {
 				  {"offset", "Offset", 0.f, -100.f, 100.f, 0.01f},
 				  {"phase", "Phase", 0.f, 0.f, 1.f, 0.01f},
 				  {"wave", "Wave", 0.f, 0.f, 3.f, 1.f, 1, kWaveLabels, "enum"},
-				  {"run", "Run", 0.f, 0.f, 1.f, 1.f, 1, kLfoRunLabels, "enum"}}});
+				  {"run", "Run", 0.f, 0.f, 1.f, 1.f, 1, kLfoRunLabels, "enum"},
+				  {"sync", "BPM", 0.f, 0.f, 1.f, 1.f, 2, nullptr, "bool"}}});
 	c.push_back({"mod.noise",
 				 "Noise",
 				 "Modulators",
@@ -421,8 +425,8 @@ std::vector<CatalogEntry> makeCatalog() {
 		}
 		for (const auto& p : e.params) {
 			const std::string_view ty = p.type ? p.type : "";
-			if (ty == "string" || ty == "enum" || p.ui == 1) {
-				continue; // names / combos stay knob-only
+			if (ty == "string" || ty == "enum" || ty == "bool" || p.ui == 1 || p.ui == 2) {
+				continue; // names, combos, and checkboxes stay off the pin list
 			}
 			bool exists = false;
 			for (const auto& pin : e.pins) {
@@ -492,7 +496,8 @@ uint32_t spawnCatalogNode(rigkit::ecs::NodeGraphData& graph, std::string_view ty
 			const char* ty = (p.type && p.type[0]) ? p.type : "float";
 			if (std::string_view(ty) == "string") {
 				setParamString(*n, p.key, p.strDef ? p.strDef : "", ty);
-			} else if (std::string_view(ty) == "enum" || p.ui == 1) {
+			} else if (std::string_view(ty) == "enum" || std::string_view(ty) == "bool" ||
+					   p.ui == 1 || p.ui == 2) {
 				setParamInt(*n, p.key, static_cast<int>(p.def), ty);
 			} else {
 				setParamFloat(*n, p.key, p.def, ty);

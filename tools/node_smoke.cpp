@@ -126,7 +126,8 @@ int compositeSmoke() {
 	}
 	const auto again = rig::node::uniqueCompositePath(tmp, "Sum");
 	if (again.filename() != "sum-2.node.json") {
-		std::printf("node_smoke FAIL composite unique name %s\n", again.filename().string().c_str());
+		std::printf("node_smoke FAIL composite unique name %s\n",
+					again.filename().string().c_str());
 		return 1;
 	}
 
@@ -192,8 +193,7 @@ int compositeSmoke() {
 	bool mutated = false;
 	if (copy && copy->nested) {
 		for (auto& n : copy->nested->nodes) {
-			if (n.typeId == "float.value" &&
-				nearEq(rig::node::getParamFloat(n, "value"), 5.f)) {
+			if (n.typeId == "float.value" && nearEq(rig::node::getParamFloat(n, "value"), 5.f)) {
 				rig::node::setParamFloat(n, "value", 9.f);
 				mutated = true;
 			}
@@ -700,6 +700,95 @@ int main() {
 	if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 69.f)) {
 		std::printf("node_smoke FAIL note qmidi=%f\n", ev.outputs.empty() ? -1.f : ev.outputs[0]);
 		return 1;
+	}
+
+	// BPM tickbox: Frequency is cycles per beat, locked to the clock, not Hz.
+	{
+		rig::node::TempoBusValues tempo;
+		tempo.active = true;
+		tempo.bpm = 100.f;
+		tempo.beat = 0.25;
+		rig::node::setTempoBus(tempo);
+		graph = {};
+		const uint32_t lfoB = rig::node::spawnCatalogNode(graph, "mod.lfo", {0.f, 0.f});
+		const uint32_t outB = rig::node::spawnCatalogNode(graph, "float.out", {200.f, 0.f});
+		const uint32_t gate = rig::node::spawnCatalogNode(graph, "float.value", {0.f, 80.f});
+		auto* nLfo = graph.findNode(lfoB);
+		auto* nGate = graph.findNode(gate);
+		if (!nLfo || !nGate) {
+			return 1;
+		}
+		rig::node::setParamInt(*nLfo, "sync", 1, "bool");
+		if (!rig::node::tryLinkByName(graph, lfoB, "out", outB, "in") ||
+			!rig::node::tryLinkByName(graph, gate, "out", lfoB, "gate")) {
+			std::printf("node_smoke FAIL lfo bpm link\n");
+			return 1;
+		}
+		scratch.clear();
+		ctx.scratch = &scratch;
+		ctx.time = 10.f;
+		ev = rig::node::evaluateGraph(graph, ctx);
+		if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 1.f)) {
+			std::printf("node_smoke FAIL lfo bpm=%f\n", ev.outputs.empty() ? -1.f : ev.outputs[0]);
+			return 1;
+		}
+		tempo.beat = 1.0;
+		rig::node::setTempoBus(tempo);
+		ev = rig::node::evaluateGraph(graph, ctx);
+		if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 0.f)) {
+			std::printf("node_smoke FAIL lfo bpm wrap=%f\n",
+						ev.outputs.empty() ? -1.f : ev.outputs[0]);
+			return 1;
+		}
+		rig::node::setParamFloat(*nLfo, "freq", 0.25f);
+		ev = rig::node::evaluateGraph(graph, ctx);
+		if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 1.f)) {
+			std::printf("node_smoke FAIL lfo bpm bar=%f\n",
+						ev.outputs.empty() ? -1.f : ev.outputs[0]);
+			return 1;
+		}
+		// Rising gate restarts the cycle on the current beat.
+		rig::node::setParamFloat(*nLfo, "freq", 1.f);
+		rig::node::setParamFloat(*nGate, "value", 1.f);
+		ev = rig::node::evaluateGraph(graph, ctx);
+		if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 0.f)) {
+			std::printf("node_smoke FAIL lfo bpm sync=%f\n",
+						ev.outputs.empty() ? -1.f : ev.outputs[0]);
+			return 1;
+		}
+		// One shot stays at rest until a new rising edge, then follows beats.
+		rig::node::setParamInt(*nLfo, "run", 1, "enum");
+		rig::node::setParamFloat(*nGate, "value", 0.f);
+		scratch.clear();
+		tempo.beat = 0.0;
+		rig::node::setTempoBus(tempo);
+		ev = rig::node::evaluateGraph(graph, ctx);
+		if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 0.f)) {
+			std::printf("node_smoke FAIL lfo bpm rest=%f\n",
+						ev.outputs.empty() ? -1.f : ev.outputs[0]);
+			return 1;
+		}
+		tempo.beat = 2.0;
+		rig::node::setTempoBus(tempo);
+		ev = rig::node::evaluateGraph(graph, ctx);
+		if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 0.f)) {
+			std::printf("node_smoke FAIL lfo bpm hold=%f\n",
+						ev.outputs.empty() ? -1.f : ev.outputs[0]);
+			return 1;
+		}
+		rig::node::setParamFloat(*nGate, "value", 1.f);
+		tempo.beat = 2.0;
+		rig::node::setTempoBus(tempo);
+		ev = rig::node::evaluateGraph(graph, ctx);
+		tempo.beat = 2.25;
+		rig::node::setTempoBus(tempo);
+		ev = rig::node::evaluateGraph(graph, ctx);
+		if (!ev.ok || ev.outputs.empty() || !nearEq(ev.outputs[0], 1.f)) {
+			std::printf("node_smoke FAIL lfo bpm shot=%f\n",
+						ev.outputs.empty() ? -1.f : ev.outputs[0]);
+			return 1;
+		}
+		rig::node::setTempoBus({});
 	}
 
 	rig::node::TempoBusValues tempo;

@@ -28,6 +28,12 @@ entt::entity makeGraph(rigkit::MEcs& ecs, std::string_view name = "node-graph");
 uint32_t addNode(rigkit::ecs::NodeGraphData& graph, std::string_view typeId, std::string_view title,
 				 glm::vec2 pos, const std::vector<PinDesc>& pins);
 
+/**
+ * @brief Link two pins.
+ * @details A new wire into `float.map` pin `in` copies the source span into
+ * `inMin` / `inMax` (LFO and noise are offset plus or minus amplitude, audio is 0..gain,
+ * random and ramp use their own min/max). Output range is left alone.
+ */
 bool tryLink(rigkit::ecs::NodeGraphData& graph, uint32_t fromNode, uint32_t fromPin,
 			 uint32_t toNode, uint32_t toPin);
 

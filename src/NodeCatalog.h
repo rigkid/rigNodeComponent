@@ -15,7 +15,7 @@ struct CatalogParam {
 	float min = 0.f;
 	float max = 1.f;
 	float speed = 0.01f;
-	/// 0 = drag float, 1 = int combo (use min..max as inclusive indices)
+	/// 0 = drag float, 1 = int combo (use min..max as inclusive indices), 2 = checkbox
 	int ui = 0;
 	const char* const* comboLabels = nullptr; // size = (max-min)+1 when ui==1
 	/// Rig property datatype id (`float`, `enum`, `string`, ...)
@@ -47,7 +47,8 @@ std::vector<const char*> catalogCategories();
 /**
  * @brief Spawn a catalog node with default pins/params. Returns 0 if unknown.
  */
-uint32_t spawnCatalogNode(rigkit::ecs::NodeGraphData& graph, std::string_view typeId, glm::vec2 pos);
+uint32_t spawnCatalogNode(rigkit::ecs::NodeGraphData& graph, std::string_view typeId,
+						  glm::vec2 pos);
 
 /**
  * @brief Add catalog pins missing from existing nodes (recursive into groups).
