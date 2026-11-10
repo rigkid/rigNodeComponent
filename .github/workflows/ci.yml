@@ -12,6 +12,18 @@ env:
   SMOKE: node_smoke
 
 jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Data packs register components, never systems
+        run: |
+          if grep -rn 'registerSystem' src/ 2>/dev/null; then
+            echo "::error::Data pack rigNodeComponent registers a system - systems live in code packs."
+            exit 1
+          fi
+          echo "rigNodeComponent: no systems registered."
+
   example:
     runs-on: ubuntu-latest
     steps:
