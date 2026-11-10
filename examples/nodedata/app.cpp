@@ -4,7 +4,7 @@
 #include "core/RigKitEngine.h"
 #include "rendering/U_gladGlfw.h"
 #include "packs/rigComponent/src/rigComponent.h"
-#include "packs/rigImGui/src/IWindow.h"
+#include "packs/rigImGui/src/ImGuiPanel.h"
 #include "packs/rigImGui/src/Mui.h"
 #include "packs/rigImGui/src/MWindow.h"
 #include "packs/rigImGui/src/rigImGui.h"
@@ -23,10 +23,10 @@
 
 namespace {
 
-class NodeOutWindow : public rigkit::IWindow {
+class NodeOutWindow : public rigkit::ImGuiPanel {
   public:
 	NodeOutWindow(float* out, float* a, float* b)
-		: IWindow("Demo Graph", ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking |
+		: ImGuiPanel("Demo Graph", ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking |
 									ImGuiWindowFlags_NoSavedSettings |
 									ImGuiWindowFlags_NoScrollbar),
 		  m_out(out), m_a(a), m_b(b) {}
@@ -43,7 +43,7 @@ class NodeOutWindow : public rigkit::IWindow {
 			ImVec2(std::max(rigkit::uiPx(360.f), vp->WorkSize.x - pad.x * 2.f),
 				   std::max(rigkit::uiPx(260.f), vp->WorkSize.y - pad.y * 2.f)),
 			ImGuiCond_FirstUseEver);
-		IWindow::render();
+		ImGuiPanel::render();
 	}
 
   protected:
